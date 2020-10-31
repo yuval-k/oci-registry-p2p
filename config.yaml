@@ -1,0 +1,46 @@
+version: 0.1
+log:
+  accesslog:
+    disabled: true
+  level: debug
+  formatter: text
+  fields:
+    service: registry
+    environment: staging
+  hooks:
+    - type: mail
+      disabled: true
+      levels:
+        - panic
+      options:
+        smtp:
+          addr: mail.example.com:25
+          username: mailuser
+          password: password
+          insecure: true
+        from: sender@example.com
+        to:
+          - errors@example.com
+loglevel: debug # deprecated: use "log"
+storage:
+  orbitdb:
+    address: /ip4/192.168.1.3/tcp/31341
+    db_address: /orbitdb/bafyreicy76ezsk3dx6yeoemlajkddezkmfxwfruuub7r27gr7fwuou3rhi/test
+    cache_dir: /tmp/cache
+http:
+  addr: localhost:5000
+  net: tcp
+  prefix: /
+  host: https://localhost:5000
+  secret: asecretforlocaldevelopment
+  relativeurls: true
+  draintimeout: 60s
+  debug:
+    addr: localhost:5001
+  headers:
+    X-Content-Type-Options: [nosniff]
+  http2:
+    disabled: false
+  tls:
+    certificate: cert.pem
+    key: key.pem

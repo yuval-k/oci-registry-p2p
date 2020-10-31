@@ -1,0 +1,58 @@
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: registry-cached
+  namespace: default
+spec:
+  serviceName: registry
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry-cached
+      registry: registry
+  template:
+    metadata:
+      labels:
+        app: registry-cached
+    spec:
+      containers:
+      - name: registry-cached
+        image: yuval.dev/registry:v0.9.6
+        ports:
+        - containerPort: 5000
+  volumeClaimTemplates:
+  - metadata:
+      name: cache
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "my-storage-class"
+      resources:
+        requests:
+          storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry-replicas
+spec:
+  selector:
+    matchLabels:
+      app: registry-replicas
+  template:
+    metadata:
+      labels:
+        app: registry-replicas
+        registry: registry
+    spec:
+      containers:
+      - name: registry-replicas
+        image: yuval.dev/registry:v0.9.6
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        ports:
+        - containerPort: 5000
