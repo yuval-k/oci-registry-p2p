@@ -63,8 +63,8 @@ type Driver struct {
 
 type DriverParameters struct {
 	Address   string `json:"address"`
-	DbAddress string `json:"db_address"`
-	CacheDir  string `json:"cache_dir"`
+	DbAddress string `json:"dbaddress"`
+	CacheDir  string `json:"cachedir"`
 }
 
 // Create returns a new storagedriver.StorageDriver with the given parameters
@@ -72,21 +72,21 @@ type DriverParameters struct {
 // Each parameter key must only consist of lowercase letters and numbers
 func (s *ipfsDriverFactory) Create(parameters map[string]interface{}) (storagedriver.StorageDriver, error) {
 
-	ipfsNodeAddress, ok := parameters["address"].(string)
-	if !ok {
+	data, err := json.Marshal(parameters)
+	if err != nil {
+		return nil, err
+	}
+	var params DriverParameters
+	err = json.Unmarshal(data, &params)
+	if err != nil {
+		return nil, err
+	}
+
+	if params.Address == "" {
 		return nil, fmt.Errorf("please provide ipfs node address. for example: /ip4/1.2.3.4/tcp/80")
 	}
-	dbNodeAddress, ok := parameters["db_address"].(string)
-	if !ok {
+	if params.DbAddress == "" {
 		return nil, fmt.Errorf("please provide orbitdb address. create it out of band")
-	}
-
-	cacheDir, _ := parameters["cache_dir"].(string)
-
-	params := DriverParameters{
-		Address:   ipfsNodeAddress,
-		DbAddress: dbNodeAddress,
-		CacheDir:  cacheDir,
 	}
 
 	return NewDriverFromParams(params)

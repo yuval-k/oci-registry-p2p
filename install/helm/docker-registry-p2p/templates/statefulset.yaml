@@ -1,0 +1,101 @@
+{{- if .Values.statefulSet.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "docker-registry-p2p.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "docker-registry-p2p.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "docker-registry-p2p.fullname" . }}
+  replicas: {{ .Values.statefulSet.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "docker-registry-p2p.selectorLabels" . | nindent 6 }}
+      registry: statefulset
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '5001'
+        prometheus.io/path: '/metrics'
+      labels:
+        {{- include "docker-registry-p2p.selectorLabels" . | nindent 8 }}
+        registry: statefulset
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ include "docker-registry-p2p.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - key: REGISTRY_STORAGE_ORBITDB_ADDRESS
+          value: {{ .Values.orbitdb.ipfsPath | quote }}
+        - key: REGISTRY_STORAGE_ORBITDB_ADDRESS
+          value: {{ .Values.orbitdb.orbitdbAddress | quote }}
+        - key: REGISTRY_STORAGE_ORBITDB_CACHEDIR
+          value: /cache
+        ports:
+          - name: http
+{{- if .Values.tlsSecretName }}
+            scheme: HTTPS
+{{- end }}
+            containerPort: 5000
+            protocol: TCP
+          - name: debug
+            containerPort: 5001
+            protocol: TCP
+        # livenessProbe:
+        #   httpGet:
+        #     path: /
+        #     port: http
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+        volumeMounts:
+{{- if .Values.tlsSecretName }}
+          - mountPath: "/etc/certs"
+            name: tls
+{{- end}}
+            readOnly: true
+          - mountPath: /cache
+            name: cache
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+{{- if .Values.tlsSecretName }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Values.tlsSecretName }}
+{{- end }}
+  volumeClaimTemplates:
+  - metadata:
+      name: cache
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "my-storage-class"
+      resources:
+        requests:
+          storage: 1Gi
+{{- end }}

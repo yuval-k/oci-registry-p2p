@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "docker-registry-p2p.fullname" . }}-test-connection"
+  labels:
+    {{- include "docker-registry-p2p.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['{{- if .Values.tlsSecretName }}https://{{- end }}{{ include "docker-registry-p2p.fullname" . }}:{{ .Values.service.port }}']
+  restartPolicy: Never

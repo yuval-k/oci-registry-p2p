@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "docker-registry-p2p.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "docker-registry-p2p.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    version: 0.1
+    log:
+      accesslog:
+        disabled: true  # TODO
+      level: debug
+      formatter: text
+      fields:
+        service: registry
+        environment: staging  # TODO
+    storage:
+      orbitdb:
+        address: {{ .Values.orbitdb.ipfsPath }}
+        db_address: {{ .Values.orbitdb.orbitdbAddress }}
+        cache_dir: /cache
+    http:
+      addr: 0.0.0.0:5000
+      net: tcp
+      prefix: /  # TODO
+      host: {{ .Values.registry.http.host }}
+      secret: {{ randAlphaNum 16}}
+      relativeurls: true
+      draintimeout: 60s
+      debug:
+        addr: 0.0.0.0:5001 # TODO
+        prometheus:
+          enabled: true
+          path: /metrics
+
+      headers:
+        X-Content-Type-Options: [nosniff]
+      http2:
+        disabled: false
+      tls:
+        certificate: tls.crt
+        key: tls.key
