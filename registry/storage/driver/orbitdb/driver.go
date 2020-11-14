@@ -19,9 +19,11 @@ import (
 	"github.com/docker/distribution/registry/storage/driver/base"
 	"github.com/docker/distribution/registry/storage/driver/factory"
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-datastore"
 	files "github.com/ipfs/go-ipfs-files"
 	httpapi "github.com/ipfs/go-ipfs-http-client"
 	coreapi "github.com/ipfs/interface-go-ipfs-core"
+	"github.com/ipfs/interface-go-ipfs-core/options"
 	ipfspath "github.com/ipfs/interface-go-ipfs-core/path"
 	ma "github.com/multiformats/go-multiaddr"
 	"go.uber.org/atomic"
@@ -62,9 +64,11 @@ type Driver struct {
 }
 
 type DriverParameters struct {
-	Address   string `json:"address"`
-	DbAddress string `json:"dbaddress"`
-	CacheDir  string `json:"cachedir"`
+	Address     string `json:"address"`
+	DbAddress   string `json:"dbaddress"`
+	CacheDir    string `json:"cachedir"`
+	PublishIpns bool   `json:"publishipns"`
+	IpnsKey     string `json:"ipnskey"`
 }
 
 // Create returns a new storagedriver.StorageDriver with the given parameters
@@ -102,10 +106,24 @@ func NewDriverFromParams(params DriverParameters) (storagedriver.StorageDriver, 
 	if err != nil {
 		return nil, err
 	}
-	return NewDriverFromAPI(api, params.CacheDir, params.DbAddress)
+	d, err := NewDriverFromAPI(api, params.CacheDir, params.DbAddress, params.PublishIpns, params.IpnsKey)
+	return Wrap(d), err
 }
 
-func NewDriverFromAPI(api coreapi.CoreAPI, cacheDir, dbaddr string) (storagedriver.StorageDriver, error) {
+func Wrap(d *IpfsDriver) storagedriver.StorageDriver {
+	if d == nil {
+		return nil
+	}
+	return &Driver{
+		baseEmbed: baseEmbed{
+			Base: base.Base{
+				StorageDriver: d,
+			},
+		},
+	}
+}
+
+func NewDriverFromAPI(api coreapi.CoreAPI, cacheDir, dbaddr string, pubipns bool, ipnsKey string) (*IpfsDriver, error) {
 
 	options := &orbitdb.NewOrbitDBOptions{}
 
@@ -125,33 +143,79 @@ func NewDriverFromAPI(api coreapi.CoreAPI, cacheDir, dbaddr string) (storagedriv
 		return nil, err
 	}
 
-	d := &ipfsDriver{
+	d := &IpfsDriver{
 		api:          api,
 		kv:           kv,
 		ctx:          ctx,
 		saveSnapshot: cacheDir != "",
 	}
-
+	// we either have or not have a persistent cache. so first try with cache:
 	err = d.kv.LoadFromSnapshot(context.Background())
 	if err != nil {
 		logger(ctx).Debugln("failed loading snapshot", err)
+
+		// ok, no cache: try from ipns
+
+		if pubipns {
+			// if get ipns key has CID,
+			// get last snapshot cid from ipns
+			// TODO: i'm relying on impl details which is not ideal.
+			// a good solution would be to refactor loadfromsnapshot to take in a CID
+			// upside: we don't need stateful set !
+			if ipnsKey == "" {
+				self, err := api.Key().Self(ctx)
+				if err != nil {
+					return nil, err
+				}
+				ipnsKey = self.ID().Pretty()
+			}
+
+			d.ipnsKey = ipnsKey
+			d.publishIpns = true
+
+			err = d.resolveIpns(ctx)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return d, nil
+}
+func (s *IpfsDriver) resolveIpns(ctx context.Context) error {
+
+	path, err := s.api.Name().Resolve(ctx, s.ipnsKey)
+	if err != nil {
+		// can't resolve, this might be the first time
+		if strings.Contains(err.Error(), "could not resolve name") {
+			return nil
+		}
+		return err
 	}
 
-	return &Driver{
-		baseEmbed: baseEmbed{
-			Base: base.Base{
-				StorageDriver: d,
-			},
-		},
-	}, nil
+	resolved, err := s.api.ResolvePath(ctx, path)
+	if err != nil {
+		return err
+	}
+
+	err = s.kv.Cache().Put(datastore.NewKey("snapshot"), []byte(resolved.Cid().String()))
+	if err != nil {
+		return fmt.Errorf("unable to add snapshot data to cache %w", err)
+	}
+	err = s.kv.LoadFromSnapshot(context.Background())
+	if err != nil {
+		logger(ctx).Debugln("failed loading snapshot", err)
+	}
+	return nil
 }
 
-// ipfsDriver implements the storagedriver.StorageDriver interface
-type ipfsDriver struct {
+// IpfsDriver implements the storagedriver.StorageDriver interface
+type IpfsDriver struct {
 	api          coreapi.CoreAPI
 	kv           orbitdb.KeyValueStore
 	ctx          context.Context
 	saveSnapshot bool
+	publishIpns  bool
+	ipnsKey      string
 
 	snapStarter sync.Once
 	kick        chan struct{}
@@ -160,13 +224,13 @@ type ipfsDriver struct {
 // Name returns the human-readable "name" of the driver, useful in error
 // messages and logging. By convention, this will just be the registration
 // name, but drivers may provide other information here.
-func (s *ipfsDriver) Name() string {
+func (s *IpfsDriver) Name() string {
 	return "ipfs"
 }
 
 // GetContent retrieves the content stored at "path" as a []byte.
 // This should primarily be used for small objects.
-func (s *ipfsDriver) GetContent(ctx context.Context, path string) ([]byte, error) {
+func (s *IpfsDriver) GetContent(ctx context.Context, path string) ([]byte, error) {
 	r, err := s.Reader(ctx, path, 0)
 	if err != nil {
 		return nil, err
@@ -176,7 +240,7 @@ func (s *ipfsDriver) GetContent(ctx context.Context, path string) ([]byte, error
 
 // PutContent stores the []byte content at a location designated by "path".
 // This should primarily be used for small objects.
-func (s *ipfsDriver) PutContent(ctx context.Context, path string, content []byte) error {
+func (s *IpfsDriver) PutContent(ctx context.Context, path string, content []byte) error {
 	defer s.queueSnapshot()
 	f := files.NewBytesFile(content)
 
@@ -188,23 +252,26 @@ func (s *ipfsDriver) PutContent(ctx context.Context, path string, content []byte
 	return s.set(ctx, path, cid.Cid())
 }
 
-func (s *ipfsDriver) queueSnapshot() {
+func (s *IpfsDriver) queueSnapshot() {
 	if !s.saveSnapshot {
 		return
 	}
 	s.snapStarter.Do(func() {
 		s.kick = make(chan struct{}, 1)
 		go func() {
+			for range s.ctx.Done() {
+				// kick every minute.. why not!
+				time.Sleep(time.Minute)
+				select {
+				case s.kick <- struct{}{}:
+				default:
+				}
+			}
+		}()
+		go func() {
 			ctx := s.ctx
 			for range s.kick {
-				cid, err := basestore.SaveSnapshot(ctx, s.kv)
-				if err != nil {
-					// log something
-					logger(ctx).Debugln("failed saving snapshot", err)
-				} else {
-					logger(ctx).Debugln("saved snapshot", cid)
-					// log something
-				}
+				s.Flush(ctx)
 				// make sure we don't save too much..
 				time.Sleep(10 * time.Second)
 			}
@@ -216,7 +283,31 @@ func (s *ipfsDriver) queueSnapshot() {
 	}
 }
 
-func (s *ipfsDriver) get(ctx context.Context, path string) ([]cid.Cid, error) {
+func (s *IpfsDriver) Flush(ctx context.Context) {
+
+	cid, err := basestore.SaveSnapshot(ctx, s.kv)
+	if err != nil {
+		// log something
+		logger(ctx).Debugln("failed saving snapshot", err)
+	}
+	if s.publishIpns {
+
+		logger(ctx).Debugln("saved snapshot", cid)
+
+		if len(s.kv.Replicator().GetQueue()) == 0 {
+			s.api.Name().Publish(ctx, ipfspath.IpfsPath(cid), options.Name.Key(s.ipnsKey), options.Name.ValidTime(time.Hour*24*365))
+			// nothing is queued, so publish to IPNS
+			/*
+				if (have ipns key) {
+					blah.saveto(ipns, cid)
+				}
+			*/
+		}
+		// log something
+	}
+}
+
+func (s *IpfsDriver) get(ctx context.Context, path string) ([]cid.Cid, error) {
 
 	bytes, err := s.kv.Get(ctx, path)
 	if err != nil {
@@ -230,7 +321,7 @@ func (s *ipfsDriver) get(ctx context.Context, path string) ([]cid.Cid, error) {
 
 }
 
-func (s *ipfsDriver) set(ctx context.Context, path string, cids ...cid.Cid) error {
+func (s *IpfsDriver) set(ctx context.Context, path string, cids ...cid.Cid) error {
 	if cids == nil {
 		cids = make([]cid.Cid, 0)
 	}
@@ -246,7 +337,7 @@ func (s *ipfsDriver) set(ctx context.Context, path string, cids ...cid.Cid) erro
 // Reader retrieves an io.ReadCloser for the content stored at "path"
 // with a given byte offset.
 // May be used to resume reading a stream by providing a nonzero offset.
-func (s *ipfsDriver) Reader(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
+func (s *IpfsDriver) Reader(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
 	if offset < 0 {
 		return nil, storagedriver.InvalidOffsetError{Path: path, Offset: offset, DriverName: DriverName}
 	}
@@ -357,7 +448,7 @@ func (r *lazyReader) Close() error {
 
 // Writer returns a FileWriter which will store the content written to it
 // at the location designated by "path" after the call to Commit.
-func (s *ipfsDriver) Writer(ctx context.Context, path string, append bool) (driver.FileWriter, error) {
+func (s *IpfsDriver) Writer(ctx context.Context, path string, append bool) (driver.FileWriter, error) {
 	// we can't append so we will update the parts of the path
 	w := &writer{ctx: ctx, path: path, append: append, parent: s}
 	if append {
@@ -381,7 +472,7 @@ type writer struct {
 
 	reader *io.PipeReader
 	writer *io.PipeWriter
-	parent *ipfsDriver
+	parent *IpfsDriver
 
 	writeResult chan writeResult
 	written     atomic.Int64
@@ -510,7 +601,7 @@ func (w *writer) flush() error {
 
 // Stat retrieves the FileInfo for the given path, including the current
 // size in bytes and the creation time.
-func (s *ipfsDriver) Stat(ctx context.Context, path string) (driver.FileInfo, error) {
+func (s *IpfsDriver) Stat(ctx context.Context, path string) (driver.FileInfo, error) {
 
 	allpaths := s.kv.All()
 
@@ -537,7 +628,7 @@ func (s *ipfsDriver) Stat(ctx context.Context, path string) (driver.FileInfo, er
 
 	return storagedriver.FileInfoInternal{FileInfoFields: fi}, nil
 }
-func (s *ipfsDriver) getSize(ctx context.Context, path string) (int64, error) {
+func (s *IpfsDriver) getSize(ctx context.Context, path string) (int64, error) {
 	cids, err := s.get(ctx, path)
 	if err != nil {
 		return 0, err
@@ -566,7 +657,7 @@ func (s *ipfsDriver) getSize(ctx context.Context, path string) (int64, error) {
 
 // List returns a list of the objects that are direct descendants of the
 //given path.
-func (s *ipfsDriver) List(ctx context.Context, path string) ([]string, error) {
+func (s *IpfsDriver) List(ctx context.Context, path string) ([]string, error) {
 	var children []string
 	for k := range s.kv.All() {
 		if strings.HasPrefix(k, path) {
@@ -580,7 +671,7 @@ func (s *ipfsDriver) List(ctx context.Context, path string) ([]string, error) {
 // original object.
 // Note: This may be no more efficient than a copy followed by a delete for
 // many implementations.
-func (s *ipfsDriver) Move(ctx context.Context, sourcePath string, destPath string) error {
+func (s *IpfsDriver) Move(ctx context.Context, sourcePath string, destPath string) error {
 	hash, err := s.kv.Get(ctx, sourcePath)
 	if err != nil {
 		return err
@@ -590,7 +681,7 @@ func (s *ipfsDriver) Move(ctx context.Context, sourcePath string, destPath strin
 }
 
 // Delete recursively deletes all objects stored at "path" and its subpaths.
-func (s *ipfsDriver) Delete(ctx context.Context, path string) error {
+func (s *IpfsDriver) Delete(ctx context.Context, path string) error {
 	_, err := s.kv.Delete(ctx, path)
 	return err
 }
@@ -599,7 +690,7 @@ func (s *ipfsDriver) Delete(ctx context.Context, path string) error {
 // the given path, possibly using the given options.
 // May return an ErrUnsupportedMethod in certain StorageDriver
 // implementations.
-func (s *ipfsDriver) URLFor(ctx context.Context, path string, options map[string]interface{}) (string, error) {
+func (s *IpfsDriver) URLFor(ctx context.Context, path string, options map[string]interface{}) (string, error) {
 	return "", storagedriver.ErrUnsupportedMethod{DriverName: DriverName}
 }
 
@@ -608,6 +699,6 @@ func (s *ipfsDriver) URLFor(ctx context.Context, path string, options map[string
 // If the returned error from the WalkFn is ErrSkipDir and fileInfo refers
 // to a directory, the directory will not be entered and Walk
 // will continue the traversal.  If fileInfo refers to a normal file, processing stops
-func (s *ipfsDriver) Walk(ctx context.Context, path string, f driver.WalkFn) error {
+func (s *IpfsDriver) Walk(ctx context.Context, path string, f driver.WalkFn) error {
 	return storagedriver.WalkFallback(ctx, s, path, f)
 }

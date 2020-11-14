@@ -5,16 +5,21 @@
 certificate:
   enabled: false
 
+
 deployment:
-  enabled: false
   replicaCount: 1
-statefulSet:
-  enabled: true
-  replicaCount: 1
+  statefulSet: false
+
+orbitdb:
+  ipfsPath: /ip4/192.168.1.3/tcp/31341
+  orbitdbAddress: /orbitdb/bafyreicy76ezsk3dx6yeoemlajkddezkmfxwfruuub7r27gr7fwuou3rhi/test
+  publishipns: false
+  ipnskey: ""
 
 image:
-  repository: nginx
+  repository: docker-registry-p2p
   pullPolicy: IfNotPresent
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""
@@ -80,8 +85,7 @@ registry:
   http:
     host: https://localhost:5000
 
-orbitdb:
-  ipfsPath: /ip4/192.168.1.3/tcp/31341
-  orbitdbAddress: /orbitdb/bafyreicy76ezsk3dx6yeoemlajkddezkmfxwfruuub7r27gr7fwuou3rhi/test
-
-tlsSecretName: registry-tls
+tls:
+  enabled: true
+  secretName: ""
+  createSelfSigned: true

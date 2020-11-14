@@ -20,6 +20,10 @@ spec:
         image: yuval.dev/registry:v0.9.6
         ports:
         - containerPort: 5000
+      volumes:
+        - name: cache
+          persistentVolumeClaim:
+            claimName: cache
   volumeClaimTemplates:
   - metadata:
       name: cache
@@ -46,7 +50,7 @@ spec:
     spec:
       containers:
       - name: registry-replicas
-        image: yuval.dev/registry:v0.9.6
+        image: gcr.io/google-containers/busybox
         resources:
           requests:
             memory: "32Mi"

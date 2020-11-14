@@ -40,5 +40,5 @@ data:
       http2:
         disabled: false
       tls:
-        certificate: tls.crt
-        key: tls.key
+        certificate: /etc/certs/tls.crt
+        key: /etc/certs/tls.key

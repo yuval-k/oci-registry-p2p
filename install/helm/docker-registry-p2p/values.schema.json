@@ -1,8 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "properties": {
-    "tlsSecretName": {
-      "type": "string"
+    "tls": {
+      "type": "object",
+      "properties": {
+        "secretName": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "createSelfSigned": {
+          "type": "boolean"
+        }
+      }
     },
     "certificate": {
       "type": "object",
@@ -20,18 +31,9 @@
         },
         "replicaCount": {
           "type": "integer"
-        }
-      }
-    },
-    "statefulSet": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean"
         },
-        "replicaCount": {
-          "type": "number",
-          "format": "integer"
+        "statefulSet":{
+          "type":"boolean"
         }
       }
     },
@@ -76,6 +78,10 @@
         },
         "orbitdbAddress": {
           "description": "db address",
+          "type": "string"
+        },
+        "ipnsSnapshotKey": {
+          "description": "save snapshots to this ipns key",
           "type": "string"
         }
       },

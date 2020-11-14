@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	ipfsNodeAddress := "/ip4/192.168.1.3/tcp/31341"
+	ipfsNodeAddress := "/ip4/127.0.0.1/tcp/5001"
 	if len(os.Args) > 2 {
 		ipfsNodeAddress = os.Args[1]
 	}
