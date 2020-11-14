@@ -53,6 +53,12 @@ spec:
         - name: REGISTRY_STORAGE_ORBITDB_CACHEDIR
           value: /cache
 {{- end }}
+{{- if .Values.orbitdb.publishipns }}
+        - name: REGISTRY_STORAGE_ORBITDB_IPNSKEY
+          value: {{ .Values.orbitdb.ipnskey | quote }}
+{{- end }}
+        - name: REGISTRY_STORAGE_ORBITDB_PUBLISHIPNS
+          value: {{ .Values.orbitdb.publishipns | quote }}
         ports:
           - name: http
             containerPort: 5000

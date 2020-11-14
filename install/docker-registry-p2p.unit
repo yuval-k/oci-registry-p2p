@@ -1,0 +1,19 @@
+[Unit]
+Description=P2P Docker registry
+
+[Service]
+ExecStart=/usr/local/bin/docker-registry-p2p server /etc/docker-registry-p2p/config.yaml
+
+Environment="SECRET=pGNqduRFkB4K9C2vijOmUDa2kPtUhArN"
+Environment="ANOTHER_SECRET=JP8YLOc2bsNlrGuD6LVTq7L36obpjzxd"
+Environment="REGISTRY_STORAGE_ORBITDB_ADDRESS=FILL_ME"
+Environment="REGISTRY_STORAGE_ORBITDB_DBADDRESS=FILL_ME"
+# folder to cache
+Environment="REGISTRY_STORAGE_ORBITDB_CACHEDIR=FILL_ME"
+Environment="REGISTRY_STORAGE_ORBITDB_IPNSKEY=FILL_ME"
+
+# example: true
+Environment="REGISTRY_STORAGE_ORBITDB_PUBLISHIPNS=FILL_ME" 
+
+[Install]
+WantedBy=multi-user.target
