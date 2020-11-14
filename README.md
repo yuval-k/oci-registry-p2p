@@ -49,12 +49,20 @@ docker build -t docker-registry-p2p:dev .
 kind load docker-image docker-registry-p2p:dev
 ```
 
-
 install registry:
 ```
 helm --namespace registry upgrade -i registry ./install/helm/docker-registry-p2p --set orbitdb.orbitdbAddress=$DB --set orbitdb.ipfsPath=/dns4/registryipfs-ipfs.registry.svc.cluster.local/tcp/5001 --set image.repository=docker-registry-p2p --set image.tag=dev
 ```
-see full helm values: 
+see more helm values in values.yaml.
+
+port forward and push!
+
+```
+kubectl port-forward -n registry svc/registry-docker-registry-p2p 5000&
+podman pull alpine:3.10.1
+podman tag alpine:3.10.1 localhost:5000/alpine
+podman push localhost:5000/alpine --tls-verify=false
+```
 
 ## Systemd (Raspberry PI, ubuntu, etc...)
 

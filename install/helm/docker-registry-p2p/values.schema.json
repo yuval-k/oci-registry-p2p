@@ -12,6 +12,9 @@
         },
         "createSelfSigned": {
           "type": "boolean"
+        },
+        "createCertificate": {
+          "type": "boolean"
         }
       }
     },
