@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "orbitdb",
+    srcs = ["driver.go"],
+    importpath = "github.com/yuval-k/docker-registry-p2p/registry/storage/driver/orbitdb",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_docker_distribution//context:go_default_library",
+        "@com_github_docker_distribution//registry/storage/driver:go_default_library",
+        "@com_github_docker_distribution//registry/storage/driver/base:go_default_library",
+        "@com_github_docker_distribution//registry/storage/driver/factory:go_default_library",
+        "@com_github_ipfs_go_cid//:go_default_library",
+        "@com_github_ipfs_go_datastore//:go_default_library",
+        "@com_github_ipfs_go_ipfs_files//:go_default_library",
+        "@com_github_ipfs_go_ipfs_http_client//:go_default_library",
+        "@com_github_ipfs_interface_go_ipfs_core//:go_default_library",
+        "@com_github_ipfs_interface_go_ipfs_core//options:go_default_library",
+        "@com_github_ipfs_interface_go_ipfs_core//path:go_default_library",
+        "@com_github_multiformats_go_multiaddr//:go_default_library",
+        "@org_uber_go_atomic//:go_default_library",
+        "@tech_berty_go_orbit_db//:go_default_library",
+        "@tech_berty_go_orbit_db//stores/basestore:go_default_library",
+    ],
+)

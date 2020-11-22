@@ -1,0 +1,12 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "middleware",
+    srcs = ["middleware.go"],
+    importpath = "github.com/yuval-k/docker-registry-p2p/registry/middleware",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_docker_distribution//:go_default_library",
+        "@com_github_docker_distribution//registry/middleware/repository:go_default_library",
+    ],
+)

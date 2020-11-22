@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "scripts_lib",
+    srcs = ["createdb.go"],
+    importpath = "github.com/yuval-k/docker-registry-p2p/scripts",
+    visibility = ["//visibility:private"],
+    deps = [
+        "@com_github_ipfs_go_ipfs_http_client//:go_default_library",
+        "@com_github_multiformats_go_multiaddr//:go_default_library",
+        "@tech_berty_go_orbit_db//:go_default_library",
+        "@tech_berty_go_orbit_db//accesscontroller:go_default_library",
+    ],
+)
+
+go_binary(
+    name = "scripts",
+    embed = [":scripts_lib"],
+    visibility = ["//visibility:public"],
+)

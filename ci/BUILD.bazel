@@ -1,0 +1,99 @@
+package(default_visibility = ["//visibility:public"])
+
+load(":container.bzl", "multi_arch_container", "multi_arch_container_push")
+load(":platforms.bzl", "SERVER_PLATFORMS", "for_platforms", "go_platform_constraint")
+load("@io_k8s_repo_infra//defs:build.bzl", "release_filegroup")
+load("@io_k8s_repo_infra//defs:pkg.bzl", "pkg_tar")
+
+# This list defines the docker images that consist a release
+DOCKERIZED_BINARIES = {
+    "registry": {
+        "target": "//:docker-registry-p2p",
+    },
+}
+
+# When pushing to quay.io, we want to use an arch, since the archless name is now used for a
+# manifest list. Bazel doesn't support manifest lists (yet), so we can't do that either.
+[multi_arch_container(
+    name = binary,
+    architectures = SERVER_PLATFORMS["linux"],
+    base = "@static_base//image",
+    binary = select(for_platforms(
+        for_server = meta["target"],
+        only_os = "linux",
+    )),
+    # Since the multi_arch_container macro replaces the {ARCH} format string,
+    # we need to escape the stamping vars.
+    container_tags = ["{{STABLE_DOCKER_REGISTRY}}/%s-{ARCH}:{{STABLE_DOCKER_TAG}}" % binary],
+    stamp = True,
+    symlinks = {
+        # Some cluster startup scripts expect to find the binaries in /usr/local/bin,
+        # but the debs install the binaries into /usr/bin.
+        "/usr/local/bin/" + binary: "/usr/bin/" + binary,
+    },
+    tags = ["manual"],
+    user = "1000",
+    visibility = ["//visibility:private"],
+) for binary, meta in DOCKERIZED_BINARIES.items()]
+
+# Also roll up all images into a single bundle to push with one target.
+multi_arch_container_push(
+    name = "registry-images",
+    architectures = SERVER_PLATFORMS["linux"],
+    container_tags_images = {
+        "{{STABLE_DOCKER_REGISTRY}}/%s-{ARCH}:{{STABLE_DOCKER_TAG}}" % binary: "%s.image" % binary
+        for binary in DOCKERIZED_BINARIES.keys()
+    },
+    tags = ["manual"],
+)
+
+[genrule(
+    name = binary + "_docker_tag",
+    srcs = [meta["target"]],
+    outs = [binary + ".docker_tag"],
+    cmd = "grep ^STABLE_DOCKER_TAG bazel-out/stable-status.txt | awk '{print $$2}' >$@",
+    stamp = 1,
+) for binary, meta in DOCKERIZED_BINARIES.items()]
+
+release_filegroup(
+    name = "server-artifacts",
+    srcs = [":%s.tar" % binary for binary in DOCKERIZED_BINARIES.keys()] +
+           [":%s.docker_tag" % binary for binary in DOCKERIZED_BINARIES.keys()],
+    tags = ["manual"],
+)
+
+
+
+pkg_tar(
+    name = "_server-images",
+    srcs = [
+        "//ci:server-artifacts",
+    ],
+    mode = "0755",
+    package_dir = "server/images",
+    tags = [
+        "manual",
+        "no-cache",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+[[pkg_tar(
+    name = "server-%s-%s" % (os, arch),
+    srcs = [
+        ":license-targets",
+        "//:version",
+    ],
+    extension = "tar.gz",
+    mode = "0644",
+    package_dir = "server-%s-%s" % (os, arch),
+    tags = [
+        "manual",
+        "no-cache",
+    ],
+    deps = select({
+        go_platform_constraint(os, arch): [
+            ":_server-images",
+        ],
+    }),
+) for arch in archs] for os, archs in SERVER_PLATFORMS.items()]

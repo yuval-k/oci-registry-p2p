@@ -1,0 +1,44 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+load("@bazel_gazelle//:def.bzl", "gazelle")
+
+# gazelle:prefix github.com/yuval-k/docker-registry-p2p
+gazelle(name = "gazelle")
+
+go_library(
+    name = "docker-registry-p2p_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/yuval-k/docker-registry-p2p",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//registry/storage/driver/orbitdb",
+        "@com_github_docker_distribution//registry:go_default_library",
+        "@com_github_docker_distribution//registry/auth/htpasswd:go_default_library",
+        "@com_github_docker_distribution//registry/auth/silly:go_default_library",
+        "@com_github_docker_distribution//registry/auth/token:go_default_library",
+        "@com_github_docker_distribution//registry/proxy:go_default_library",
+        "@com_github_docker_distribution//registry/storage/driver/azure:go_default_library",
+        "@com_github_docker_distribution//registry/storage/driver/filesystem:go_default_library",
+        "@com_github_docker_distribution//registry/storage/driver/inmemory:go_default_library",
+        "@com_github_docker_distribution//registry/storage/driver/middleware/cloudfront:go_default_library",
+        "@com_github_docker_distribution//registry/storage/driver/middleware/redirect:go_default_library",
+        "@com_github_docker_distribution//registry/storage/driver/oss:go_default_library",
+        "@com_github_docker_distribution//registry/storage/driver/s3-aws:go_default_library",
+        "@com_github_docker_distribution//registry/storage/driver/swift:go_default_library",
+    ],
+)
+
+go_binary(
+    name = "docker-registry-p2p",
+    embed = [":docker-registry-p2p_lib"],
+    pure = "on",
+    visibility = ["//visibility:public"],
+)
+
+# export WORKSPACE so workspace_binary rules can be used outside the root
+exports_files([
+    "WORKSPACE",
+    "LICENSE",
+    "LICENSES",
+    "go.mod",
+    "go.sum",
+])
