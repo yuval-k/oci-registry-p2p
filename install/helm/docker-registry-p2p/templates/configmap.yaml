@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "docker-registry-p2p.fullname" . }}
+  name: {{ include "oci-registry-p2p.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "docker-registry-p2p.labels" . | nindent 4 }}
+    {{- include "oci-registry-p2p.labels" . | nindent 4 }}
 data:
   config.yaml: |
     version: 0.1
@@ -21,6 +21,9 @@ data:
         address: {{ .Values.orbitdb.ipfsPath }}
         db_address: {{ .Values.orbitdb.orbitdbAddress }}
         cache_dir: /cache
+        publishipns: {{ .Values.orbitdb.publishIPNS }}
+        ipnskey: {{ .Values.orbitdb.ipnsSnapshotKey }}
+
     http:
       addr: 0.0.0.0:5000
       net: tcp

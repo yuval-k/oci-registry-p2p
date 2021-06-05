@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "docker-registry-p2p.fullname" . }}
+  name: {{ include "oci-registry-p2p.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "docker-registry-p2p.labels" . | nindent 4 }}
+    {{- include "oci-registry-p2p.labels" . | nindent 4 }}
 {{- with .Values.service.annotations }}
 {{ toYaml . | indent 4 }}
 {{- end }}
@@ -16,4 +16,4 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "docker-registry-p2p.selectorLabels" . | nindent 4 }}
+    {{- include "oci-registry-p2p.selectorLabels" . | nindent 4 }}

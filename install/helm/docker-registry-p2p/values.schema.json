@@ -76,15 +76,19 @@
       "description": "Container Image",
       "properties": {
         "ipfsPath": {
-          "description": "ipfs peer address",
+          "description": "ipfs peer address. e.g: /ip4/127.0.0.1/tcp/5001",
           "type": "string"
         },
         "orbitdbAddress": {
-          "description": "db address",
+          "description": "DB address. The repo comes with a helper script to create a DB.",
+          "type": "string"
+        },
+        "publishIPNS": {
+          "description": "Save snapshots to ipns. This is needed to survive restarts",
           "type": "string"
         },
         "ipnsSnapshotKey": {
-          "description": "save snapshots to this ipns key",
+          "description": "IPNS key to save to. use `ipfs key list -l` to get the list of existing keys.",
           "type": "string"
         }
       },

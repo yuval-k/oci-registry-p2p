@@ -13,8 +13,8 @@ import (
 
 	orbitdb "berty.tech/go-orbit-db"
 	"berty.tech/go-orbit-db/accesscontroller"
-	storagedriver "github.com/docker/distribution/registry/storage/driver"
-	"github.com/docker/distribution/registry/storage/driver/factory"
+	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	dsync "github.com/ipfs/go-datastore/sync"
 	cfg "github.com/ipfs/go-ipfs-config"
 	ipfscore "github.com/ipfs/go-ipfs/core"
@@ -28,10 +28,10 @@ import (
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/sirupsen/logrus"
 
-	orbitdbdriver "github.com/yuval-k/docker-registry-p2p/registry/storage/driver/orbitdb"
+	orbitdbdriver "github.com/yuval-k/oci-registry-p2p/registry/storage/driver/orbitdb"
 
-	"github.com/docker/distribution/configuration"
-	"github.com/docker/distribution/registry"
+	"github.com/distribution/distribution/v3/configuration"
+	"github.com/distribution/distribution/v3/registry"
 	ds "github.com/ipfs/go-datastore"
 
 	. "github.com/onsi/ginkgo"

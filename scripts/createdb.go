@@ -36,10 +36,12 @@ func main() {
 	t := true
 	st := "keyvalue"
 
+	//fmt.Println("Our db ID:", db.Identity().ID)
+
 	ac := &accesscontroller.CreateAccessControllerOptions{
 		Access: map[string][]string{
-			"admin": {"*"},
-			"write": {"*"},
+			"admin": {db.Identity().ID},
+			"write": {db.Identity().ID},
 		},
 	}
 
@@ -48,7 +50,7 @@ func main() {
 		StoreType:        &st,
 		AccessController: ac,
 	}
-	kv, err := db.KeyValue(ctx, "test", createoptions)
+	kv, err := db.KeyValue(ctx, "oci-manifests", createoptions)
 	if err != nil {
 		panic(err)
 	}

@@ -1,8 +1,8 @@
 [Unit]
-Description=P2P Docker registry
+Description=P2P OCI registry
 
 [Service]
-ExecStart=/usr/local/bin/docker-registry-p2p server /etc/docker-registry-p2p/config.yaml
+ExecStart=/usr/local/bin/oci-registry-p2p server /etc/oci-registry-p2p/config.yaml
 
 Environment="SECRET=pGNqduRFkB4K9C2vijOmUDa2kPtUhArN"
 Environment="ANOTHER_SECRET=JP8YLOc2bsNlrGuD6LVTq7L36obpjzxd"

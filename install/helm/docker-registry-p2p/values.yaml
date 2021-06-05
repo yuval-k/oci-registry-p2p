@@ -1,4 +1,4 @@
-# Default values for docker-registry-p2p.
+# Default values for oci-registry-p2p.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
@@ -17,7 +17,7 @@ orbitdb:
   ipnskey: ""
 
 image:
-  repository: docker-registry-p2p
+  repository: oci-registry-p2p
   pullPolicy: IfNotPresent
   tag: ""
 

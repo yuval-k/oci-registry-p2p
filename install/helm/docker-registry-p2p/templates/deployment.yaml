@@ -5,20 +5,20 @@ kind: StatefulSet
 kind: Deployment
 {{- end }}
 metadata:
-  name: {{ include "docker-registry-p2p.fullname" . }}
+  name: {{ include "oci-registry-p2p.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "docker-registry-p2p.labels" . | nindent 4 }}
+    {{- include "oci-registry-p2p.labels" . | nindent 4 }}
 spec:
 {{- if .Values.deployment.statefulSet }}
-  serviceName: {{ include "docker-registry-p2p.fullname" . }}
+  serviceName: {{ include "oci-registry-p2p.fullname" . }}
 {{- end }}
 {{- if .Values.deployment.replicaCount }}
   replicas: {{ .Values.deployment.replicaCount }}
 {{- end }}
   selector:
     matchLabels:
-      {{- include "docker-registry-p2p.selectorLabels" . | nindent 6 }}
+      {{- include "oci-registry-p2p.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -26,13 +26,13 @@ spec:
         prometheus.io/port: '5001'
         prometheus.io/path: '/metrics'
       labels:
-        {{- include "docker-registry-p2p.selectorLabels" . | nindent 8 }}
+        {{- include "oci-registry-p2p.selectorLabels" . | nindent 8 }}
     spec:
     {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
     {{- end }}
-      serviceAccountName: {{ include "docker-registry-p2p.serviceAccountName" . }}
+      serviceAccountName: {{ include "oci-registry-p2p.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -106,14 +106,14 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "docker-registry-p2p.fullname" . }}
+            name: {{ include "oci-registry-p2p.fullname" . }}
             items:
               - key: config.yaml
                 path: config.yaml
 {{- if .Values.tls.enabled }}
         - name: tls
           secret:
-            secretName: {{ .Values.tls.secretName | default (include "docker-registry-p2p.fullname" .) }}
+            secretName: {{ .Values.tls.secretName | default (include "oci-registry-p2p.fullname" .) }}
 {{- end }}
 {{- if .Values.deployment.statefulSet }}
   volumeClaimTemplates:

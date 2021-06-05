@@ -13,11 +13,11 @@ import (
 
 	orbitdb "berty.tech/go-orbit-db"
 	"berty.tech/go-orbit-db/stores/basestore"
-	dcontext "github.com/docker/distribution/context"
-	"github.com/docker/distribution/registry/storage/driver"
-	storagedriver "github.com/docker/distribution/registry/storage/driver"
-	"github.com/docker/distribution/registry/storage/driver/base"
-	"github.com/docker/distribution/registry/storage/driver/factory"
+	dcontext "github.com/distribution/distribution/v3/context"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
+	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
+	"github.com/distribution/distribution/v3/registry/storage/driver/base"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	files "github.com/ipfs/go-ipfs-files"
@@ -484,7 +484,7 @@ type writer struct {
 func (w *writer) Write(p []byte) (n int, err error) {
 	l := logger(w.ctx)
 	l.Debug("writing len=", len(p))
-	defer l.Debug("wrote", n, err)
+	defer l.Debug("wrote ", n, err)
 	if w.reader == nil {
 		w.reader, w.writer = io.Pipe()
 		w.writeResult = make(chan writeResult, 1)
@@ -657,11 +657,20 @@ func (s *IpfsDriver) getSize(ctx context.Context, path string) (int64, error) {
 
 // List returns a list of the objects that are direct descendants of the
 //given path.
-func (s *IpfsDriver) List(ctx context.Context, path string) ([]string, error) {
+func (s *IpfsDriver) List(ctx context.Context, p string) ([]string, error) {
 	var children []string
+	if !strings.HasSuffix(p, "/") {
+		p = p + "/"
+	}
 	for k := range s.kv.All() {
-		if strings.HasPrefix(k, path) {
-			children = append(children, k)
+		if strings.HasPrefix(k, p) {
+			// check that they are direct descendants:
+			// remove path prefix, trailing and leading /. if we have more / then it's not a direct child
+			childPart := strings.TrimFunc(strings.TrimPrefix(k, p), func(r rune) bool { return r == '/' })
+			// only add direct children
+			if !strings.ContainsRune(childPart, '/') {
+				children = append(children, k)
+			}
 		}
 	}
 	return children, nil

@@ -3,8 +3,8 @@ package middleware
 import (
 	"context"
 
-	"github.com/docker/distribution"
-	middleware "github.com/docker/distribution/registry/middleware/repository"
+	"github.com/distribution/distribution/v3"
+	middleware "github.com/distribution/distribution/v3/registry/middleware/repository"
 )
 
 func init() {

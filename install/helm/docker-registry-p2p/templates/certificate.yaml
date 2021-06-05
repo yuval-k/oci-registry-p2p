@@ -2,10 +2,10 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ include "docker-registry-p2p.fullname" . }}
+  name: {{ include "oci-registry-p2p.fullname" . }}
   namespace: {{ .Release.Namespace }}
 spec:
-  secretName: {{ include "docker-registry-p2p.fullname" . }}
+  secretName: {{ include "oci-registry-p2p.fullname" . }}
   issuerRef:
     kind: Issuer # TODO
     name: letsencrypt-staging # TODO
