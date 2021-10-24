@@ -14,7 +14,6 @@ import (
 	orbitdb "berty.tech/go-orbit-db"
 	"berty.tech/go-orbit-db/stores/basestore"
 	dcontext "github.com/distribution/distribution/v3/context"
-	"github.com/distribution/distribution/v3/registry/storage/driver"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/base"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
@@ -135,6 +134,9 @@ func NewDriverFromAPI(api coreapi.CoreAPI, cacheDir, dbaddr string, pubipns bool
 	if err != nil {
 		return nil, err
 	}
+	l := logger(ctx)
+	l.Infoln("Our db ID:", db.Identity().ID)
+	l.Infoln("Our db Address:", dbaddr)
 	// TODO: document that we need to make sure only one writer.
 	createoptions := &orbitdb.CreateDBOptions{}
 
@@ -150,13 +152,14 @@ func NewDriverFromAPI(api coreapi.CoreAPI, cacheDir, dbaddr string, pubipns bool
 		saveSnapshot: cacheDir != "",
 	}
 	// we either have or not have a persistent cache. so first try with cache:
-	err = d.kv.LoadFromSnapshot(context.Background())
+	err = d.kv.LoadFromSnapshot(ctx)
 	if err != nil {
-		logger(ctx).Debugln("failed loading snapshot", err)
+		l.Debugln("failed loading snapshot", err)
 
 		// ok, no cache: try from ipns
 
 		if pubipns {
+			l.Debugln("will publish to ipns")
 			// if get ipns key has CID,
 			// get last snapshot cid from ipns
 			// TODO: i'm relying on impl details which is not ideal.
@@ -197,14 +200,18 @@ func (s *IpfsDriver) resolveIpns(ctx context.Context) error {
 		return err
 	}
 
+	// this is a bit of a hack, load from snapshot expects the ipns key in that that key...
+	// that happens when SaveSnapshot.
 	err = s.kv.Cache().Put(datastore.NewKey("snapshot"), []byte(resolved.Cid().String()))
 	if err != nil {
 		return fmt.Errorf("unable to add snapshot data to cache %w", err)
 	}
-	err = s.kv.LoadFromSnapshot(context.Background())
+	err = s.kv.LoadFromSnapshot(ctx)
+	l := logger(ctx)
 	if err != nil {
-		logger(ctx).Debugln("failed loading snapshot", err)
+		l.Debugln("failed loading snapshot", err)
 	}
+	l.Debugln("loaded snapshot from cache")
 	return nil
 }
 
@@ -225,7 +232,7 @@ type IpfsDriver struct {
 // messages and logging. By convention, this will just be the registration
 // name, but drivers may provide other information here.
 func (s *IpfsDriver) Name() string {
-	return "ipfs"
+	return DriverName
 }
 
 // GetContent retrieves the content stored at "path" as a []byte.
@@ -448,7 +455,7 @@ func (r *lazyReader) Close() error {
 
 // Writer returns a FileWriter which will store the content written to it
 // at the location designated by "path" after the call to Commit.
-func (s *IpfsDriver) Writer(ctx context.Context, path string, append bool) (driver.FileWriter, error) {
+func (s *IpfsDriver) Writer(ctx context.Context, path string, append bool) (storagedriver.FileWriter, error) {
 	// we can't append so we will update the parts of the path
 	w := &writer{ctx: ctx, path: path, append: append, parent: s}
 	if append {
@@ -601,7 +608,7 @@ func (w *writer) flush() error {
 
 // Stat retrieves the FileInfo for the given path, including the current
 // size in bytes and the creation time.
-func (s *IpfsDriver) Stat(ctx context.Context, path string) (driver.FileInfo, error) {
+func (s *IpfsDriver) Stat(ctx context.Context, path string) (storagedriver.FileInfo, error) {
 
 	allpaths := s.kv.All()
 
@@ -708,6 +715,6 @@ func (s *IpfsDriver) URLFor(ctx context.Context, path string, options map[string
 // If the returned error from the WalkFn is ErrSkipDir and fileInfo refers
 // to a directory, the directory will not be entered and Walk
 // will continue the traversal.  If fileInfo refers to a normal file, processing stops
-func (s *IpfsDriver) Walk(ctx context.Context, path string, f driver.WalkFn) error {
+func (s *IpfsDriver) Walk(ctx context.Context, path string, f storagedriver.WalkFn) error {
 	return storagedriver.WalkFallback(ctx, s, path, f)
 }
