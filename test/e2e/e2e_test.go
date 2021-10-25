@@ -5,17 +5,23 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
-	"syscall"
+	"path/filepath"
+	"reflect"
+	"unsafe"
 
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 
+	"github.com/ipfs/go-datastore"
 	syncds "github.com/ipfs/go-datastore/sync"
+	"github.com/ipfs/go-filestore"
 	config "github.com/ipfs/go-ipfs-config"
 	keystore "github.com/ipfs/go-ipfs-keystore"
-	ipfscore "github.com/ipfs/go-ipfs/core"
+	"github.com/ipfs/go-ipfs/core"
+	"github.com/ipfs/go-ipfs/core/bootstrap"
 	"github.com/ipfs/go-ipfs/core/coreapi"
 	mock "github.com/ipfs/go-ipfs/core/mock"
 	"github.com/ipfs/go-ipfs/core/node/libp2p"
@@ -23,6 +29,7 @@ import (
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	options "github.com/ipfs/interface-go-ipfs-core/options"
 	ci "github.com/libp2p/go-libp2p-core/crypto"
+	crypto "github.com/libp2p/go-libp2p-core/crypto"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/sirupsen/logrus"
@@ -30,7 +37,6 @@ import (
 
 	"github.com/distribution/distribution/v3/configuration"
 	"github.com/distribution/distribution/v3/registry"
-	"github.com/ipfs/go-datastore"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -42,14 +48,15 @@ var (
 
 var _ = Describe("E2e", func() {
 	var (
-		ctx        context.Context
-		cancel     context.CancelFunc
-		node       *ipfscore.IpfsNode
+		ctx    context.Context
+		cancel context.CancelFunc
+		//node       *ipfscore.IpfsNode
 		api        coreiface.CoreAPI
 		driverName string
 		config     *configuration.Configuration
 		wait       chan struct{}
 		reg        *registry.Registry
+		closeNodes func()
 
 		tdf *testDriverFactory
 	)
@@ -58,37 +65,25 @@ var _ = Describe("E2e", func() {
 		driverName = fmt.Sprintf("%s%d", ipfsdriver.DriverName, i)
 		ctx, cancel = context.WithCancel(context.Background())
 		var err error
-		mocknet := mocknet.New(ctx)
 
-		d := syncds.MutexWrap(datastore.NewMapDatastore())
+		apis, cn, err := MakeAPISwarm(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		closeNodes = cn
 
-		node, err = ipfscore.NewNode(ctx, &ipfscore.BuildCfg{
-			Routing: libp2p.DHTServerOption,
-			Online:  true,
-			Host:    mock.MockHostOption(mocknet),
-			ExtraOpts: map[string]bool{
-				"pubsub": true,
-			},
-			Repo: defaultRepoWithKeyStore(d),
-		})
+		api = apis[0]
 		Expect(err).NotTo(HaveOccurred())
-		/*
-			bsinf := bootstrap.BootstrapConfigWithPeers(
-				[]peer.AddrInfo{
-					node.Peerstore.PeerInfo(node.Identity),
-				},
-			)
-			err = node.Bootstrap(bsinf)
-		*/
 
+		// create test key for us.
+		name := "testkey"
+		key, err := api.Key().Generate(context.TODO(), name, options.Key.Type("rsa"), options.Key.Size(2048))
 		Expect(err).NotTo(HaveOccurred())
-		api, err = coreapi.NewCoreAPI(node)
-		Expect(err).NotTo(HaveOccurred())
+		ipnsKey := key.ID().Pretty()
 
 		tdf = &testDriverFactory{
-			api: api,
+			api:     api,
+			ipnsKey: ipnsKey,
 		}
-
+		// register factory...
 		factory.Register(driverName, tdf)
 
 		fp, err := os.Open("config.yaml")
@@ -121,11 +116,13 @@ var _ = Describe("E2e", func() {
 		if reg == nil {
 			return
 		}
-
-		// signal ourselves with sig term to stop the distrbution
-		// server
-		syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-
+		// gross hack, as there is no other way to cancel..
+		// i tried sending myself sigterm, but that also stops ginkgo
+		fieldValue := reflect.ValueOf(reg).Elem().FieldByName("server")
+		ptr := fieldValue.Pointer()
+		unsafe := unsafe.Pointer(ptr)
+		srv := (*http.Server)(unsafe)
+		srv.Shutdown(context.Background())
 		<-wait
 		reg = nil
 	}
@@ -134,11 +131,13 @@ var _ = Describe("E2e", func() {
 
 	AfterEach(func() {
 		cancel()
-		node.Close()
+		if closeNodes != nil {
+			closeNodes()
+		}
 		stopRegistry()
 	})
 
-	FIt("should push and pull image", func() {
+	It("should push and pull image", func() {
 		cmd := exec.Command("podman", "push", "localhost:5000/alpine", "--tls-verify=false")
 		cmd.Stdout = GinkgoWriter
 		cmd.Stderr = GinkgoWriter
@@ -149,7 +148,7 @@ var _ = Describe("E2e", func() {
 	})
 
 	Context("publish survies restart", func() {
-		It("should push and pull image", func() {
+		FIt("should push and pull image", func() {
 			cmd := exec.Command("podman", "push", "localhost:5000/alpine", "--tls-verify=false")
 			cmd.Stdout = GinkgoWriter
 			cmd.Stderr = GinkgoWriter
@@ -159,31 +158,26 @@ var _ = Describe("E2e", func() {
 			// restart registry to make sure it persisted
 			stopRegistry()
 			runRegistry()
-			err = exec.Command("podman", "pull", "localhost:5000/alpine", "--tls-verify=false").Run()
+			cmd = exec.Command("podman", "pull", "localhost:5000/alpine", "--tls-verify=false")
+			cmd.Stdout = GinkgoWriter
+			cmd.Stderr = GinkgoWriter
+			err = cmd.Run()
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
 })
 
-var _ = BeforeSuite(func() {
-})
-
 type testDriverFactory struct {
-	api coreiface.CoreAPI
+	api     coreiface.CoreAPI
+	ipnsKey string
 
 	driver *ipfsdriver.IpfsDriver
 }
 
 func (s *testDriverFactory) Create(parameters map[string]interface{}) (storagedriver.StorageDriver, error) {
-	name := "testkey"
-
-	key, err := s.api.Key().Generate(context.TODO(), name, options.Key.Type("rsa"), options.Key.Size(2048))
-	if err != nil {
-		return nil, err
-	}
-	ipnsKey := key.ID().Pretty()
-	s.driver, err = ipfsdriver.NewDriverFromAPI(s.api, ipnsKey, false)
+	var err error
+	s.driver, err = ipfsdriver.NewDriverFromAPI(s.api, s.ipnsKey, false)
 	return ipfsdriver.Wrap(s.driver), err
 }
 
@@ -202,7 +196,7 @@ func defaultRepoWithKeyStore(dstore repo.Datastore) repo.Repo {
 	c := config.Config{}
 	// don't set bootstrap addresses. no need for test node to bootstrap...
 	// 	c.Bootstrap = config.DefaultBootstrapAddresses
-	c.Addresses.Swarm = []string{"/ip4/0.0.0.0/tcp/4001", "/ip4/0.0.0.0/udp/4001/quic"}
+	c.Addresses.Swarm = []string{"/ip4/18.0.0.1/tcp/4001"}
 	c.Identity.PeerID = pid.Pretty()
 	c.Identity.PrivKey = base64.StdEncoding.EncodeToString(privkeyb)
 
@@ -211,4 +205,92 @@ func defaultRepoWithKeyStore(dstore repo.Datastore) repo.Repo {
 		C: c,
 		K: keystore.NewMemKeystore(),
 	}
+}
+
+// this is in a test, so cant re-use it
+
+func MakeAPISwarm(ctx context.Context) ([]coreiface.CoreAPI, func(), error) {
+	n := 5
+	fullIdentity := true
+	mn := mocknet.New(ctx)
+
+	nodes := make([]*core.IpfsNode, n)
+	apis := make([]coreiface.CoreAPI, n)
+
+	for i := 0; i < n; i++ {
+		var ident config.Identity
+		sk, pk, err := crypto.GenerateKeyPair(crypto.RSA, 2048)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		id, err := peer.IDFromPublicKey(pk)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		kbytes, err := crypto.MarshalPrivateKey(sk)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		ident = config.Identity{
+			PeerID:  id.Pretty(),
+			PrivKey: base64.StdEncoding.EncodeToString(kbytes),
+		}
+
+		c := config.Config{}
+		c.Addresses.Swarm = []string{fmt.Sprintf("/ip4/18.0.%d.1/tcp/4001", i)}
+		c.Identity = ident
+		c.Experimental.FilestoreEnabled = true
+
+		ds := syncds.MutexWrap(datastore.NewMapDatastore())
+		r := &repo.Mock{
+			C: c,
+			D: ds,
+			K: keystore.NewMemKeystore(),
+			F: filestore.NewFileManager(ds, filepath.Dir(os.TempDir())),
+		}
+
+		node, err := core.NewNode(ctx, &core.BuildCfg{
+			Routing: libp2p.DHTServerOption,
+			Repo:    r,
+			Host:    mock.MockHostOption(mn),
+			Online:  fullIdentity,
+			ExtraOpts: map[string]bool{
+				"pubsub": true,
+			},
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		nodes[i] = node
+		apis[i], err = coreapi.NewCoreAPI(node)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	err := mn.LinkAll()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	bsinf := bootstrap.BootstrapConfigWithPeers(
+		[]peer.AddrInfo{
+			nodes[0].Peerstore.PeerInfo(nodes[0].Identity),
+		},
+	)
+
+	for _, n := range nodes[1:] {
+		if err := n.Bootstrap(bsinf); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	return apis, func() {
+		for _, n := range nodes {
+			n.Close()
+		}
+	}, nil
 }
