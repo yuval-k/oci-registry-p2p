@@ -5,27 +5,23 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"reflect"
-	"unsafe"
+	"syscall"
 
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 
 	syncds "github.com/ipfs/go-datastore/sync"
-	"github.com/ipfs/go-filestore"
 	config "github.com/ipfs/go-ipfs-config"
 	keystore "github.com/ipfs/go-ipfs-keystore"
 	ipfscore "github.com/ipfs/go-ipfs/core"
-	"github.com/ipfs/go-ipfs/core/bootstrap"
 	"github.com/ipfs/go-ipfs/core/coreapi"
 	mock "github.com/ipfs/go-ipfs/core/mock"
 	"github.com/ipfs/go-ipfs/core/node/libp2p"
 	"github.com/ipfs/go-ipfs/repo"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
+	options "github.com/ipfs/interface-go-ipfs-core/options"
 	ci "github.com/libp2p/go-libp2p-core/crypto"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
@@ -76,13 +72,15 @@ var _ = Describe("E2e", func() {
 			Repo: defaultRepoWithKeyStore(d),
 		})
 		Expect(err).NotTo(HaveOccurred())
+		/*
+			bsinf := bootstrap.BootstrapConfigWithPeers(
+				[]peer.AddrInfo{
+					node.Peerstore.PeerInfo(node.Identity),
+				},
+			)
+			err = node.Bootstrap(bsinf)
+		*/
 
-		bsinf := bootstrap.BootstrapConfigWithPeers(
-			[]peer.AddrInfo{
-				node.Peerstore.PeerInfo(node.Identity),
-			},
-		)
-		err = node.Bootstrap(bsinf)
 		Expect(err).NotTo(HaveOccurred())
 		api, err = coreapi.NewCoreAPI(node)
 		Expect(err).NotTo(HaveOccurred())
@@ -123,12 +121,11 @@ var _ = Describe("E2e", func() {
 		if reg == nil {
 			return
 		}
-		// gross hack, as there is no other way to cancel..
-		fieldValue := reflect.ValueOf(reg).Elem().FieldByName("server")
-		ptr := fieldValue.Pointer()
-		unsafe := unsafe.Pointer(ptr)
-		srv := (*http.Server)(unsafe)
-		srv.Shutdown(context.Background())
+
+		// signal ourselves with sig term to stop the distrbution
+		// server
+		syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+
 		<-wait
 		reg = nil
 	}
@@ -179,11 +176,13 @@ type testDriverFactory struct {
 }
 
 func (s *testDriverFactory) Create(parameters map[string]interface{}) (storagedriver.StorageDriver, error) {
-	self, err := s.api.Key().Self(context.TODO())
+	name := "testkey"
+
+	key, err := s.api.Key().Generate(context.TODO(), name, options.Key.Type("rsa"), options.Key.Size(2048))
 	if err != nil {
 		return nil, err
 	}
-	ipnsKey := self.ID().Pretty()
+	ipnsKey := key.ID().Pretty()
 	s.driver, err = ipfsdriver.NewDriverFromAPI(s.api, ipnsKey, false)
 	return ipfsdriver.Wrap(s.driver), err
 }
@@ -206,12 +205,10 @@ func defaultRepoWithKeyStore(dstore repo.Datastore) repo.Repo {
 	c.Addresses.Swarm = []string{"/ip4/0.0.0.0/tcp/4001", "/ip4/0.0.0.0/udp/4001/quic"}
 	c.Identity.PeerID = pid.Pretty()
 	c.Identity.PrivKey = base64.StdEncoding.EncodeToString(privkeyb)
-	c.Experimental.FilestoreEnabled = true
 
 	return &repo.Mock{
 		D: dstore,
 		C: c,
 		K: keystore.NewMemKeystore(),
-		F: filestore.NewFileManager(dstore, filepath.Dir(os.TempDir())),
 	}
 }
