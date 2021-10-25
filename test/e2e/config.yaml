@@ -23,7 +23,7 @@ log:
           - errors@example.com
 loglevel: debug # deprecated: use "log"
 storage:
-  orbitdb: {}
+  ipfs: {}
 http:
   addr: localhost:5000
   net: tcp

@@ -1,4 +1,4 @@
-package ipfs
+package ipfsdriver
 
 import (
 	"bytes"
@@ -19,6 +19,7 @@ import (
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	"github.com/ipfs/go-cid"
 	httpapi "github.com/ipfs/go-ipfs-http-client"
+	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
 	"github.com/ipfs/go-mfs"
 	unixfs "github.com/ipfs/go-unixfs"
@@ -157,10 +158,8 @@ func NewDriverFromAPI(api coreapi.CoreAPI, ipnsKey string, readOnly bool) (*Ipfs
 		return nil, err
 	}
 
-	rnode := unixfs.EmptyDirNode()
 	driver := &IpfsDriver{api: api, ctx: ctx, ipnsKey: ipnsKey, readOnly: readOnly}
-
-	driver.root, err = mfs.NewRoot(ctx, dag, rnode, mfs.PubFunc(driver.newRoot))
+	driver.root, err = mfs.NewRoot(ctx, dag, nd, mfs.PubFunc(driver.newRoot))
 	return driver, err
 }
 
@@ -174,7 +173,14 @@ type IpfsDriver struct {
 }
 
 func (s *IpfsDriver) newRoot(ctx context.Context, c cid.Cid) error {
-	_, err := s.api.Name().Publish(ctx, ipfspath.IpfsPath(c), options.Name.Key(s.ipnsKey), options.Name.ValidTime(time.Hour*24*365))
+	name := s.api.Name()
+	path := ipfspath.IpfsPath(c)
+	key := options.Name.Key(s.ipnsKey)
+	timeOpt := options.Name.ValidTime(time.Hour * 24 * 365)
+	_, err := name.Publish(ctx, path, key, timeOpt)
+	if err != nil {
+		logger(ctx).WithError(err).Error("failed to publish ipns entry")
+	}
 	return err
 }
 
@@ -185,7 +191,14 @@ func (s *IpfsDriver) Name() string {
 	return DriverName
 }
 func (s *IpfsDriver) reader(ctx context.Context, path string) (mfs.FileDescriptor, error) {
-	return s.fd(ctx, path, mfs.Flags{Read: true})
+	fd, err := s.fd(ctx, path, mfs.Flags{Read: true})
+
+	if err != nil && os.IsNotExist(err) {
+
+		return nil, storagedriver.PathNotFoundError{Path: path}
+	}
+
+	return fd, err
 }
 
 func (s *IpfsDriver) fd(ctx context.Context, path string, flags mfs.Flags) (mfs.FileDescriptor, error) {
@@ -212,6 +225,8 @@ func (s *IpfsDriver) writer(ctx context.Context, path string) (mfs.FileDescripto
 // GetContent retrieves the content stored at "path" as a []byte.
 // This should primarily be used for small objects.
 func (s *IpfsDriver) GetContent(ctx context.Context, path string) ([]byte, error) {
+	l := logger(ctx)
+	l.Debug("GetContent: ", "path", path)
 	rfd, err := s.reader(ctx, path)
 	if err != nil {
 		return nil, err
@@ -225,13 +240,17 @@ func (s *IpfsDriver) GetContent(ctx context.Context, path string) ([]byte, error
 // PutContent stores the []byte content at a location designated by "path".
 // This should primarily be used for small objects.
 func (s *IpfsDriver) PutContent(ctx context.Context, path string, content []byte) (retErr error) {
+	l := logger(ctx)
+	l.Debug("PutContent: ", "path", path)
 	fi, err := getFileHandleForWriting(s.root, path, true, nil)
 	if err != nil {
+		l.Debug("failed to get file handle for writing" + err.Error())
 		return err
 	}
 
 	wfd, err := fi.Open(mfs.Flags{Write: true, Sync: true})
 	if err != nil {
+		l.Debug("failed to open file for writing" + err.Error())
 		return err
 	}
 
@@ -241,16 +260,22 @@ func (s *IpfsDriver) PutContent(ctx context.Context, path string, content []byte
 			if retErr == nil {
 				retErr = err
 			} else {
-				logger(ctx).Error("files: error closing file mfs file descriptor", err)
+				l.Error("files: error closing file mfs file descriptor", err)
 			}
 		}
 	}()
 
 	if err := wfd.Truncate(0); err != nil {
+		l.Debug("failed to truncate file" + err.Error())
 		return err
 	}
 
 	_, err = io.Copy(wfd, bytes.NewBuffer(content))
+	if err != nil {
+		l.Debug("failed to write to file" + err.Error())
+		return err
+	}
+
 	return err
 }
 
@@ -258,6 +283,7 @@ func (s *IpfsDriver) PutContent(ctx context.Context, path string, content []byte
 // with a given byte offset.
 // May be used to resume reading a stream by providing a nonzero offset.
 func (s *IpfsDriver) Reader(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
+	logger(ctx).Debug("files: reader", "path", path, "offset", offset)
 	if offset < 0 {
 		return nil, storagedriver.InvalidOffsetError{Path: path, Offset: offset, DriverName: DriverName}
 	}
@@ -281,7 +307,7 @@ func (s *IpfsDriver) Reader(ctx context.Context, path string, offset int64) (io.
 // https://github.com/ipfs/go-ipfs/blob/c2e6a22bba886aa494765f6b647aaa3d18f0f3d6/core/commands/files.go#L362
 // with minor adjustments
 func (s *IpfsDriver) rm(ctx context.Context, path string) error {
-
+	logger(ctx).Debug("rm: ", path)
 	path, err := checkPath(path)
 	if err != nil {
 		return err
@@ -346,7 +372,7 @@ func (s *IpfsDriver) rm(ctx context.Context, path string) error {
 }
 
 func (s *IpfsDriver) cp(ctx context.Context, src, dst string) error {
-
+	logger(ctx).Debug("cp: ", src, dst)
 	src, err := checkPath(src)
 	if err != nil {
 		return err
@@ -393,7 +419,7 @@ func (s *IpfsDriver) cp(ctx context.Context, src, dst string) error {
 // Writer returns a FileWriter which will store the content written to it
 // at the location designated by "path" after the call to Commit.
 func (s *IpfsDriver) Writer(ctx context.Context, path string, append bool) (w storagedriver.FileWriter, retErr error) {
-
+	logger(ctx).Debug("Writer: ", path)
 	fi, err := getFileHandleForWriting(s.root, path, true, nil)
 	if err != nil {
 		return nil, err
@@ -453,11 +479,15 @@ func (w *writer) Write(p []byte) (n int, err error) {
 
 func (w *writer) Close() error {
 	if w.closed {
-		return fmt.Errorf("already closed")
+		return fmt.Errorf("Close: already closed")
 	}
 	w.closed = true
-	return w.wfd.Close()
-
+	err := w.wfd.Close()
+	if err != nil {
+		return err
+	}
+	//	_, err = mfs.FlushPath(w.ctx, w.parent.root, w.path)
+	return err
 }
 
 // Size returns the number of bytes written to this FileWriter.
@@ -468,9 +498,9 @@ func (w *writer) Size() int64 {
 // Cancel removes any written content from this FileWriter.
 func (w *writer) Cancel() error {
 	if w.closed {
-		return fmt.Errorf("already closed")
+		return fmt.Errorf("Cancel: already closed")
 	} else if w.cancelled {
-		return fmt.Errorf("already cancelled")
+		return fmt.Errorf("Cancel: already cancelled")
 	}
 	w.cancelled = true
 	// close, because we have to (deadlock otherwise)
@@ -484,23 +514,28 @@ func (w *writer) Cancel() error {
 // available for future calls to StorageDriver.GetContent and
 // StorageDriver.Reader.
 func (w *writer) Commit() error {
-	if w.closed {
-		return fmt.Errorf("already closed")
-	} else if w.committed {
+	if w.committed {
 		return fmt.Errorf("already committed")
+	} else if w.closed {
+		return fmt.Errorf("already closed")
 	} else if w.cancelled {
 		return fmt.Errorf("already cancelled")
 	}
 	w.committed = true
-	// close, as not closing wfd might entail a dead lock
-	return w.wfd.Flush()
+	// close, because we have to (deadlock otherwise)
+	// this will also flush.
+	return w.Close()
 }
 
 // Stat retrieves the FileInfo for the given path, including the current
 // size in bytes and the creation time.
 func (s *IpfsDriver) Stat(ctx context.Context, path string) (storagedriver.FileInfo, error) {
+	logger(ctx).Debug("Stat: ", path)
 	fsn, err := mfs.Lookup(s.root, path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, storagedriver.PathNotFoundError{Path: path}
+		}
 		return nil, err
 	}
 
@@ -510,16 +545,44 @@ func (s *IpfsDriver) Stat(ctx context.Context, path string) (storagedriver.FileI
 	if fsn.Type() == mfs.TDir {
 		fi.IsDir = true
 	} else {
-		fi.Size = fi.Size
+		nd, err := fsn.GetNode()
+		if err != nil {
+			return nil, err
+		}
+		fi.Size, err = sizeNode(nd)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return storagedriver.FileInfoInternal{FileInfoFields: fi}, nil
 }
 
+func sizeNode(nd ipld.Node) (int64, error) {
+
+	cumulsize, err := nd.Size()
+	if err != nil {
+		return 0, err
+	}
+	switch n := nd.(type) {
+	case *merkledag.ProtoNode:
+		d, err := unixfs.FSNodeFromBytes(n.Data())
+		if err != nil {
+			return 0, err
+		}
+
+		return int64(d.FileSize()), nil
+	case *merkledag.RawNode:
+		return int64(cumulsize), nil
+	default:
+		return 0, fmt.Errorf("not unixfs node (proto or raw)")
+	}
+}
+
 // List returns a list of the objects that are direct descendants of the
 //given path.
 func (s *IpfsDriver) List(ctx context.Context, subPath string) ([]string, error) {
-
+	logger(ctx).Debug("List: ", subPath)
 	var arg string
 
 	if len(subPath) == 0 {
@@ -535,6 +598,9 @@ func (s *IpfsDriver) List(ctx context.Context, subPath string) ([]string, error)
 
 	fsn, err := mfs.Lookup(s.root, path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, storagedriver.PathNotFoundError{Path: path}
+		}
 		return nil, err
 	}
 
@@ -549,7 +615,7 @@ func (s *IpfsDriver) List(ctx context.Context, subPath string) ([]string, error)
 		for _, name := range names {
 			output = append(output, gopath.Join(subPath, name))
 		}
-		return names, nil
+		return output, nil
 
 	default:
 		return nil, errors.New("not a directory or unrecognized type")
@@ -561,7 +627,7 @@ func (s *IpfsDriver) List(ctx context.Context, subPath string) ([]string, error)
 // Note: This may be no more efficient than a copy followed by a delete for
 // many implementations.
 func (s *IpfsDriver) Move(ctx context.Context, sourcePath string, destPath string) error {
-
+	logger(ctx).Debug("Move: ", sourcePath, " to ", destPath)
 	flush := true
 
 	src, err := checkPath(sourcePath)
@@ -573,8 +639,20 @@ func (s *IpfsDriver) Move(ctx context.Context, sourcePath string, destPath strin
 		return err
 	}
 
+	err = ensureContainingDirectoryExists(s.root, dst, nil)
+	if err != nil {
+		return err
+	}
+
 	err = mfs.Mv(s.root, src, dst)
-	if err == nil && flush {
+	if err != nil {
+		if os.IsNotExist(err) {
+			return storagedriver.PathNotFoundError{Path: sourcePath}
+		}
+		return err
+	}
+
+	if flush {
 		_, err = mfs.FlushPath(ctx, s.root, "/")
 	}
 	return err
@@ -582,6 +660,7 @@ func (s *IpfsDriver) Move(ctx context.Context, sourcePath string, destPath strin
 
 // Delete recursively deletes all objects stored at "path" and its subpaths.
 func (s *IpfsDriver) Delete(ctx context.Context, path string) error {
+	logger(ctx).Debug("Delete: ", path)
 	return s.rm(ctx, path)
 }
 
@@ -599,5 +678,6 @@ func (s *IpfsDriver) URLFor(ctx context.Context, path string, options map[string
 // to a directory, the directory will not be entered and Walk
 // will continue the traversal.  If fileInfo refers to a normal file, processing stops
 func (s *IpfsDriver) Walk(ctx context.Context, path string, f storagedriver.WalkFn) error {
+	logger(ctx).Debug("Walk: ", path)
 	return storagedriver.WalkFallback(ctx, s, path, f)
 }

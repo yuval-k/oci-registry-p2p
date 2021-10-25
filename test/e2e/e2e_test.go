@@ -8,31 +8,33 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"unsafe"
 
-	orbitdb "berty.tech/go-orbit-db"
-	"berty.tech/go-orbit-db/accesscontroller"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
-	dsync "github.com/ipfs/go-datastore/sync"
-	cfg "github.com/ipfs/go-ipfs-config"
+
+	syncds "github.com/ipfs/go-datastore/sync"
+	"github.com/ipfs/go-filestore"
+	config "github.com/ipfs/go-ipfs-config"
+	keystore "github.com/ipfs/go-ipfs-keystore"
 	ipfscore "github.com/ipfs/go-ipfs/core"
+	"github.com/ipfs/go-ipfs/core/bootstrap"
 	"github.com/ipfs/go-ipfs/core/coreapi"
 	mock "github.com/ipfs/go-ipfs/core/mock"
-	"github.com/ipfs/go-ipfs/keystore"
+	"github.com/ipfs/go-ipfs/core/node/libp2p"
 	"github.com/ipfs/go-ipfs/repo"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	ci "github.com/libp2p/go-libp2p-core/crypto"
-	peer "github.com/libp2p/go-libp2p-peer"
+	peer "github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/sirupsen/logrus"
-
-	orbitdbdriver "github.com/yuval-k/oci-registry-p2p/registry/storage/driver/orbitdb"
+	ipfsdriver "github.com/yuval-k/oci-registry-p2p/registry/storage/driver/ipfs"
 
 	"github.com/distribution/distribution/v3/configuration"
 	"github.com/distribution/distribution/v3/registry"
-	ds "github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-datastore"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -57,17 +59,17 @@ var _ = Describe("E2e", func() {
 	)
 	BeforeEach(func() {
 		i++
-		driverName = fmt.Sprintf("%s%d", orbitdbdriver.DriverName, i)
+		driverName = fmt.Sprintf("%s%d", ipfsdriver.DriverName, i)
 		ctx, cancel = context.WithCancel(context.Background())
 		var err error
 		mocknet := mocknet.New(ctx)
-		var d repo.Datastore
-		d = ds.NewMapDatastore()
-		d = dsync.MutexWrap(d)
+
+		d := syncds.MutexWrap(datastore.NewMapDatastore())
 
 		node, err = ipfscore.NewNode(ctx, &ipfscore.BuildCfg{
-			Online: true,
-			Host:   mock.MockHostOption(mocknet),
+			Routing: libp2p.DHTServerOption,
+			Online:  true,
+			Host:    mock.MockHostOption(mocknet),
 			ExtraOpts: map[string]bool{
 				"pubsub": true,
 			},
@@ -75,6 +77,13 @@ var _ = Describe("E2e", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
+		bsinf := bootstrap.BootstrapConfigWithPeers(
+			[]peer.AddrInfo{
+				node.Peerstore.PeerInfo(node.Identity),
+			},
+		)
+		err = node.Bootstrap(bsinf)
+		Expect(err).NotTo(HaveOccurred())
 		api, err = coreapi.NewCoreAPI(node)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -92,8 +101,8 @@ var _ = Describe("E2e", func() {
 		config, err = configuration.Parse(fp)
 		Expect(err).NotTo(HaveOccurred())
 
-		config.Storage[driverName] = config.Storage[orbitdbdriver.DriverName]
-		delete(config.Storage, orbitdbdriver.DriverName)
+		config.Storage[driverName] = config.Storage[ipfsdriver.DriverName]
+		delete(config.Storage, ipfsdriver.DriverName)
 
 		logrus.SetOutput(GinkgoWriter)
 
@@ -132,24 +141,23 @@ var _ = Describe("E2e", func() {
 		stopRegistry()
 	})
 
-	It("should push and pull image", func() {
-		err := exec.Command("podman", "push", "localhost:5000/alpine", "--tls-verify=false").Run()
+	FIt("should push and pull image", func() {
+		cmd := exec.Command("podman", "push", "localhost:5000/alpine", "--tls-verify=false")
+		cmd.Stdout = GinkgoWriter
+		cmd.Stderr = GinkgoWriter
+		err := cmd.Run()
 		Expect(err).NotTo(HaveOccurred())
 		err = exec.Command("podman", "pull", "localhost:5000/alpine", "--tls-verify=false").Run()
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	Context("publish ipns", func() {
-		BeforeEach(func() {
-			tdf.publishInfs = true
-		})
+	Context("publish survies restart", func() {
 		It("should push and pull image", func() {
-			err := exec.Command("podman", "push", "localhost:5000/alpine", "--tls-verify=false").Run()
+			cmd := exec.Command("podman", "push", "localhost:5000/alpine", "--tls-verify=false")
+			cmd.Stdout = GinkgoWriter
+			cmd.Stderr = GinkgoWriter
+			err := cmd.Run()
 			Expect(err).NotTo(HaveOccurred())
-
-			// flush; this should happen automatically in the background, but we do it manually to reduce flakes.
-			// not the best solution as it doesn't test how it runs in real usage, but better dev flow.
-			tdf.driver.Flush(ctx)
 
 			// restart registry to make sure it persisted
 			stopRegistry()
@@ -165,44 +173,22 @@ var _ = BeforeSuite(func() {
 })
 
 type testDriverFactory struct {
-	api         coreiface.CoreAPI
-	cacheDir    string
-	publishInfs bool
-	ipnsKey     string
+	api coreiface.CoreAPI
 
-	driver *orbitdbdriver.IpfsDriver
+	driver *ipfsdriver.IpfsDriver
 }
 
 func (s *testDriverFactory) Create(parameters map[string]interface{}) (storagedriver.StorageDriver, error) {
-
-	options := &orbitdb.NewOrbitDBOptions{}
-	ctx := context.TODO()
-	db, err := orbitdb.NewOrbitDB(ctx, s.api, options)
-	Expect(err).NotTo(HaveOccurred())
-	t := true
-	st := "keyvalue"
-
-	ac := &accesscontroller.CreateAccessControllerOptions{
-		Access: map[string][]string{
-			"admin": {"*"},
-			"write": {"*"},
-		},
+	self, err := s.api.Key().Self(context.TODO())
+	if err != nil {
+		return nil, err
 	}
-
-	createoptions := &orbitdb.CreateDBOptions{
-		Create:           &t,
-		StoreType:        &st,
-		AccessController: ac,
-	}
-	kv, err := db.KeyValue(ctx, "test", createoptions)
-	Expect(err).NotTo(HaveOccurred())
-	dbaddr := kv.Address().String()
-	s.driver, err = orbitdbdriver.NewDriverFromAPI(s.api, s.cacheDir, dbaddr, s.publishInfs, s.ipnsKey)
-	return orbitdbdriver.Wrap(s.driver), err
+	ipnsKey := self.ID().Pretty()
+	s.driver, err = ipfsdriver.NewDriverFromAPI(s.api, ipnsKey, false)
+	return ipfsdriver.Wrap(s.driver), err
 }
 
 func defaultRepoWithKeyStore(dstore repo.Datastore) repo.Repo {
-	c := cfg.Config{}
 	// 512 for fast tests..
 	ci.MinRsaKeyBits = 512
 	priv, pub, err := ci.GenerateKeyPairWithReader(ci.RSA, ci.MinRsaKeyBits, rand.Reader)
@@ -211,18 +197,21 @@ func defaultRepoWithKeyStore(dstore repo.Datastore) repo.Repo {
 	pid, err := peer.IDFromPublicKey(pub)
 	Expect(err).NotTo(HaveOccurred())
 
-	privkeyb, err := priv.Bytes()
+	privkeyb, err := ci.MarshalPrivateKey(priv)
 	Expect(err).NotTo(HaveOccurred())
 
-	c.Bootstrap = cfg.DefaultBootstrapAddresses
+	c := config.Config{}
+	// don't set bootstrap addresses. no need for test node to bootstrap...
+	// 	c.Bootstrap = config.DefaultBootstrapAddresses
 	c.Addresses.Swarm = []string{"/ip4/0.0.0.0/tcp/4001", "/ip4/0.0.0.0/udp/4001/quic"}
 	c.Identity.PeerID = pid.Pretty()
 	c.Identity.PrivKey = base64.StdEncoding.EncodeToString(privkeyb)
+	c.Experimental.FilestoreEnabled = true
 
-	ks := keystore.NewMemKeystore()
 	return &repo.Mock{
 		D: dstore,
 		C: c,
-		K: ks,
+		K: keystore.NewMemKeystore(),
+		F: filestore.NewFileManager(dstore, filepath.Dir(os.TempDir())),
 	}
 }
