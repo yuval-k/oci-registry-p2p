@@ -11,6 +11,7 @@ import (
 	"os"
 	gopath "path"
 	"strings"
+	"sync"
 	"time"
 
 	dcontext "github.com/distribution/distribution/v3/context"
@@ -101,7 +102,7 @@ func NewDriverFromParams(params DriverParameters) (storagedriver.StorageDriver, 
 		return nil, err
 	}
 
-	d, err := NewDriverFromAPI(api, params.IpnsKey, params.ReadOnly)
+	d, err := NewDriverFromAPI(context.Background(), api, params.IpnsKey, params.ReadOnly)
 	return Wrap(d), err
 }
 
@@ -118,8 +119,7 @@ func Wrap(d *IpfsDriver) storagedriver.StorageDriver {
 	}
 }
 
-func NewDriverFromAPI(api coreapi.CoreAPI, ipnsKey string, readOnly bool) (*IpfsDriver, error) {
-	ctx := context.Background()
+func NewDriverFromAPI(ctx context.Context, api coreapi.CoreAPI, ipnsKey string, readOnly bool) (*IpfsDriver, error) {
 
 	var resolved ipfspath.Resolved
 	path, err := api.Name().Resolve(ctx, ipnsKey)
@@ -143,6 +143,7 @@ func NewDriverFromAPI(api coreapi.CoreAPI, ipnsKey string, readOnly bool) (*Ipfs
 	case err == nil:
 		c := resolved.Cid()
 
+		dcontext.GetLoggerWithField(ctx, "ipns-value", c.String()).Debug("resolved initial ipns root entry")
 		rnd, err := dag.Get(ctx, c)
 		if err != nil {
 			return nil, fmt.Errorf("error loading filesroot from DAG: %s", err)
@@ -159,7 +160,24 @@ func NewDriverFromAPI(api coreapi.CoreAPI, ipnsKey string, readOnly bool) (*Ipfs
 	}
 
 	driver := &IpfsDriver{api: api, ctx: ctx, ipnsKey: ipnsKey, readOnly: readOnly}
-	driver.root, err = mfs.NewRoot(ctx, dag, nd, mfs.PubFunc(driver.newRoot))
+	if !readOnly {
+		driver.currentRoot, err = mfs.NewRoot(ctx, dag, nd, mfs.PubFunc(driver.newRoot))
+	} else {
+		// in read only mode, no need to publish the new root.
+		// just keep trying to refresh it to get updates
+		// we can probably use pub sub for this, but why bother?!
+		driver.currentRoot, err = mfs.NewRoot(ctx, dag, nd, nil)
+		go func() {
+			for {
+				select {
+				case <-time.After(time.Second * 5):
+					driver.refreshRoot()
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
 	return driver, err
 }
 
@@ -169,7 +187,63 @@ type IpfsDriver struct {
 	ctx      context.Context
 	ipnsKey  string
 	readOnly bool
-	root     *mfs.Root
+
+	currentRoot     *mfs.Root
+	currentRootLock sync.RWMutex
+}
+
+func (s *IpfsDriver) root() *mfs.Root {
+	s.currentRootLock.RLock()
+	defer s.currentRootLock.RUnlock()
+	return s.currentRoot
+}
+
+func (s *IpfsDriver) refreshRoot() {
+	l := logger(s.ctx)
+	l.Debug("refreshRoot")
+	var resolved ipfspath.Resolved
+	path, err := s.api.Name().Resolve(s.ctx, s.ipnsKey)
+	if err == nil {
+		resolved, err = s.api.ResolvePath(s.ctx, path)
+		if err != nil {
+			l.WithError(err).Error("refreshRoot: resolve path")
+			return
+		}
+	}
+
+	dag := s.api.Dag()
+
+	pbnd, err := s.getNodeFromCid(resolved.Cid())
+	if err != nil {
+		l.WithError(err).Error("refreshRoot: get node from cid")
+		return
+	}
+	newroot, err := mfs.NewRoot(s.ctx, dag, pbnd, nil)
+	if err != nil {
+		l.WithError(err).Error("refreshRoot: new root")
+		return
+	}
+
+	s.currentRootLock.Lock()
+	defer s.currentRootLock.Unlock()
+	s.currentRoot.Close()
+	s.currentRoot = newroot
+}
+
+func (s *IpfsDriver) getNodeFromCid(c cid.Cid) (*merkledag.ProtoNode, error) {
+	dag := s.api.Dag()
+	dcontext.GetLoggerWithField(s.ctx, "ipns-value", c.String()).Debug("resolved initial ipns root entry")
+	rnd, err := dag.Get(s.ctx, c)
+	if err != nil {
+		return nil, fmt.Errorf("error loading filesroot from DAG: %s", err)
+	}
+
+	pbnd, ok := rnd.(*merkledag.ProtoNode)
+	if !ok {
+		return nil, merkledag.ErrNotProtobuf
+	}
+	return pbnd, nil
+
 }
 
 func (s *IpfsDriver) newRoot(ctx context.Context, c cid.Cid) error {
@@ -178,9 +252,11 @@ func (s *IpfsDriver) newRoot(ctx context.Context, c cid.Cid) error {
 	key := options.Name.Key(s.ipnsKey)
 	timeOpt := options.Name.ValidTime(time.Hour * 24 * 365)
 	_, err := name.Publish(ctx, path, key, timeOpt)
+	l := logger(ctx)
 	if err != nil {
-		logger(ctx).WithError(err).Error("failed to publish ipns entry")
+		l.WithError(err).Error("failed to publish ipns entry")
 	}
+	dcontext.GetLoggerWithField(ctx, "ipns-value", path.Cid().String()).Debug("published ipns entry")
 	return err
 }
 
@@ -190,6 +266,11 @@ func (s *IpfsDriver) newRoot(ctx context.Context, c cid.Cid) error {
 func (s *IpfsDriver) Name() string {
 	return DriverName
 }
+
+func (s *IpfsDriver) Close() error {
+	return s.root().Close()
+}
+
 func (s *IpfsDriver) reader(ctx context.Context, path string) (mfs.FileDescriptor, error) {
 	fd, err := s.fd(ctx, path, mfs.Flags{Read: true})
 
@@ -202,7 +283,7 @@ func (s *IpfsDriver) reader(ctx context.Context, path string) (mfs.FileDescripto
 }
 
 func (s *IpfsDriver) fd(ctx context.Context, path string, flags mfs.Flags) (mfs.FileDescriptor, error) {
-	fsn, err := mfs.Lookup(s.root, path)
+	fsn, err := mfs.Lookup(s.root(), path)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +323,12 @@ func (s *IpfsDriver) GetContent(ctx context.Context, path string) ([]byte, error
 func (s *IpfsDriver) PutContent(ctx context.Context, path string, content []byte) (retErr error) {
 	l := logger(ctx)
 	l.Debug("PutContent: ", "path", path)
-	fi, err := getFileHandleForWriting(s.root, path, true, nil)
+
+	if s.readOnly {
+		return fmt.Errorf("cannot write to readonly ipfs driver")
+	}
+
+	fi, err := getFileHandleForWriting(s.root(), path, true, nil)
 	if err != nil {
 		l.Debug("failed to get file handle for writing" + err.Error())
 		return err
@@ -308,6 +394,10 @@ func (s *IpfsDriver) Reader(ctx context.Context, path string, offset int64) (io.
 // with minor adjustments
 func (s *IpfsDriver) rm(ctx context.Context, path string) error {
 	logger(ctx).Debug("rm: ", path)
+	if s.readOnly {
+		return fmt.Errorf("cannot write to readonly ipfs driver")
+	}
+
 	path, err := checkPath(path)
 	if err != nil {
 		return err
@@ -328,7 +418,7 @@ func (s *IpfsDriver) rm(ctx context.Context, path string) error {
 
 	dir, name := gopath.Split(path)
 
-	pdir, err := getParentDir(s.root, dir)
+	pdir, err := getParentDir(s.root(), dir)
 	if err != nil {
 		if force && err == os.ErrNotExist {
 			return nil
@@ -373,6 +463,10 @@ func (s *IpfsDriver) rm(ctx context.Context, path string) error {
 
 func (s *IpfsDriver) cp(ctx context.Context, src, dst string) error {
 	logger(ctx).Debug("cp: ", src, dst)
+
+	if s.readOnly {
+		return fmt.Errorf("cannot write to readonly ipfs driver")
+	}
 	src, err := checkPath(src)
 	if err != nil {
 		return err
@@ -388,25 +482,25 @@ func (s *IpfsDriver) cp(ctx context.Context, src, dst string) error {
 		dst += gopath.Base(src)
 	}
 
-	node, err := getNodeFromPath(ctx, s.root, s.api, src)
+	node, err := getNodeFromPath(ctx, s.root(), s.api, src)
 	if err != nil {
 		return fmt.Errorf("cp: cannot get node from path %s: %s", src, err)
 	}
 	mkParents := true
 	if mkParents {
-		err := ensureContainingDirectoryExists(s.root, dst, nil)
+		err := ensureContainingDirectoryExists(s.root(), dst, nil)
 		if err != nil {
 			return err
 		}
 	}
 
-	err = mfs.PutNode(s.root, dst, node)
+	err = mfs.PutNode(s.root(), dst, node)
 	if err != nil {
 		return fmt.Errorf("cp: cannot put node in path %s: %s", dst, err)
 	}
 	flush := true
 	if flush {
-		_, err := mfs.FlushPath(ctx, s.root, dst)
+		_, err := mfs.FlushPath(ctx, s.root(), dst)
 		if err != nil {
 			return fmt.Errorf("cp: cannot flush the created file %s: %s", dst, err)
 		}
@@ -420,7 +514,11 @@ func (s *IpfsDriver) cp(ctx context.Context, src, dst string) error {
 // at the location designated by "path" after the call to Commit.
 func (s *IpfsDriver) Writer(ctx context.Context, path string, append bool) (w storagedriver.FileWriter, retErr error) {
 	logger(ctx).Debug("Writer: ", path)
-	fi, err := getFileHandleForWriting(s.root, path, true, nil)
+	if s.readOnly {
+		return nil, fmt.Errorf("cannot write to readonly ipfs driver")
+	}
+
+	fi, err := getFileHandleForWriting(s.root(), path, true, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -531,7 +629,7 @@ func (w *writer) Commit() error {
 // size in bytes and the creation time.
 func (s *IpfsDriver) Stat(ctx context.Context, path string) (storagedriver.FileInfo, error) {
 	logger(ctx).Debug("Stat: ", path)
-	fsn, err := mfs.Lookup(s.root, path)
+	fsn, err := mfs.Lookup(s.root(), path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, storagedriver.PathNotFoundError{Path: path}
@@ -596,7 +694,7 @@ func (s *IpfsDriver) List(ctx context.Context, subPath string) ([]string, error)
 		return nil, err
 	}
 
-	fsn, err := mfs.Lookup(s.root, path)
+	fsn, err := mfs.Lookup(s.root(), path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, storagedriver.PathNotFoundError{Path: path}
@@ -628,6 +726,9 @@ func (s *IpfsDriver) List(ctx context.Context, subPath string) ([]string, error)
 // many implementations.
 func (s *IpfsDriver) Move(ctx context.Context, sourcePath string, destPath string) error {
 	logger(ctx).Debug("Move: ", sourcePath, " to ", destPath)
+	if s.readOnly {
+		return fmt.Errorf("cannot write to readonly ipfs driver")
+	}
 	flush := true
 
 	src, err := checkPath(sourcePath)
@@ -639,12 +740,12 @@ func (s *IpfsDriver) Move(ctx context.Context, sourcePath string, destPath strin
 		return err
 	}
 
-	err = ensureContainingDirectoryExists(s.root, dst, nil)
+	err = ensureContainingDirectoryExists(s.root(), dst, nil)
 	if err != nil {
 		return err
 	}
 
-	err = mfs.Mv(s.root, src, dst)
+	err = mfs.Mv(s.root(), src, dst)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return storagedriver.PathNotFoundError{Path: sourcePath}
@@ -653,7 +754,7 @@ func (s *IpfsDriver) Move(ctx context.Context, sourcePath string, destPath strin
 	}
 
 	if flush {
-		_, err = mfs.FlushPath(ctx, s.root, "/")
+		_, err = mfs.FlushPath(ctx, s.root(), "/")
 	}
 	return err
 }

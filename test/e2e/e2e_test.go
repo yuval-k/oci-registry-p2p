@@ -2,16 +2,18 @@ package e2e_test
 
 import (
 	"context"
-	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
-	"reflect"
-	"unsafe"
+	"syscall"
+	"time"
 
+	dcontext "github.com/distribution/distribution/v3/context"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 
@@ -28,7 +30,6 @@ import (
 	"github.com/ipfs/go-ipfs/repo"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	options "github.com/ipfs/interface-go-ipfs-core/options"
-	ci "github.com/libp2p/go-libp2p-core/crypto"
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
@@ -36,7 +37,9 @@ import (
 	ipfsdriver "github.com/yuval-k/oci-registry-p2p/registry/storage/driver/ipfs"
 
 	"github.com/distribution/distribution/v3/configuration"
-	"github.com/distribution/distribution/v3/registry"
+	"github.com/distribution/distribution/v3/registry/handlers"
+	"github.com/distribution/distribution/v3/registry/listener"
+	"github.com/distribution/distribution/v3/uuid"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -55,14 +58,13 @@ var _ = Describe("E2e", func() {
 		driverName string
 		config     *configuration.Configuration
 		wait       chan struct{}
-		reg        *registry.Registry
+		reg        *testRegistry
+		ipnsKey    string
 		closeNodes func()
 
 		tdf *testDriverFactory
 	)
 	BeforeEach(func() {
-		i++
-		driverName = fmt.Sprintf("%s%d", ipfsdriver.DriverName, i)
 		ctx, cancel = context.WithCancel(context.Background())
 		var err error
 
@@ -77,11 +79,23 @@ var _ = Describe("E2e", func() {
 		name := "testkey"
 		key, err := api.Key().Generate(context.TODO(), name, options.Key.Type("rsa"), options.Key.Size(2048))
 		Expect(err).NotTo(HaveOccurred())
-		ipnsKey := key.ID().Pretty()
+		ipnsKey = key.ID().Pretty()
+
+		logrus.SetOutput(GinkgoWriter)
+
+	})
+
+	runRegistry := func() {
+		wait = make(chan struct{})
+		var err error
+
+		i++
+		driverName = fmt.Sprintf("%s%d", ipfsdriver.DriverName, i)
 
 		tdf = &testDriverFactory{
 			api:     api,
 			ipnsKey: ipnsKey,
+			ctx:     ctx,
 		}
 		// register factory...
 		factory.Register(driverName, tdf)
@@ -97,17 +111,10 @@ var _ = Describe("E2e", func() {
 		config.Storage[driverName] = config.Storage[ipfsdriver.DriverName]
 		delete(config.Storage, ipfsdriver.DriverName)
 
-		logrus.SetOutput(GinkgoWriter)
-
-	})
-
-	runRegistry := func() {
-		wait = make(chan struct{})
-		var err error
-		reg, err = registry.NewRegistry(ctx, config)
+		reg, err = NewRegistry(ctx, config)
 		Expect(err).NotTo(HaveOccurred())
-
 		go func() {
+			defer GinkgoRecover()
 			reg.ListenAndServe()
 			close(wait)
 		}()
@@ -116,15 +123,13 @@ var _ = Describe("E2e", func() {
 		if reg == nil {
 			return
 		}
-		// gross hack, as there is no other way to cancel..
-		// i tried sending myself sigterm, but that also stops ginkgo
-		fieldValue := reflect.ValueOf(reg).Elem().FieldByName("server")
-		ptr := fieldValue.Pointer()
-		unsafe := unsafe.Pointer(ptr)
-		srv := (*http.Server)(unsafe)
-		srv.Shutdown(context.Background())
+
+		reg.Shutdown()
+
+		cancel()
+		ctx, cancel = context.WithCancel(context.Background())
 		<-wait
-		reg = nil
+		time.Sleep(time.Second)
 	}
 
 	JustBeforeEach(runRegistry)
@@ -148,14 +153,17 @@ var _ = Describe("E2e", func() {
 	})
 
 	Context("publish survies restart", func() {
-		FIt("should push and pull image", func() {
+		It("should push and pull image", func() {
 			cmd := exec.Command("podman", "push", "localhost:5000/alpine", "--tls-verify=false")
 			cmd.Stdout = GinkgoWriter
 			cmd.Stderr = GinkgoWriter
 			err := cmd.Run()
 			Expect(err).NotTo(HaveOccurred())
 
+			// give time for the registry to flush data and save the new root
+			time.Sleep(time.Second * 5)
 			// restart registry to make sure it persisted
+			By("restarting the registry")
 			stopRegistry()
 			runRegistry()
 			cmd = exec.Command("podman", "pull", "localhost:5000/alpine", "--tls-verify=false")
@@ -171,44 +179,22 @@ var _ = Describe("E2e", func() {
 type testDriverFactory struct {
 	api     coreiface.CoreAPI
 	ipnsKey string
-
-	driver *ipfsdriver.IpfsDriver
+	ctx     context.Context
+	driver  *ipfsdriver.IpfsDriver
 }
 
 func (s *testDriverFactory) Create(parameters map[string]interface{}) (storagedriver.StorageDriver, error) {
 	var err error
-	s.driver, err = ipfsdriver.NewDriverFromAPI(s.api, s.ipnsKey, false)
+	s.driver, err = ipfsdriver.NewDriverFromAPI(s.ctx, s.api, s.ipnsKey, false)
+	go func() {
+		defer GinkgoRecover()
+		<-s.ctx.Done()
+		s.driver.Close()
+	}()
 	return ipfsdriver.Wrap(s.driver), err
 }
 
-func defaultRepoWithKeyStore(dstore repo.Datastore) repo.Repo {
-	// 512 for fast tests..
-	ci.MinRsaKeyBits = 512
-	priv, pub, err := ci.GenerateKeyPairWithReader(ci.RSA, ci.MinRsaKeyBits, rand.Reader)
-	Expect(err).NotTo(HaveOccurred())
-
-	pid, err := peer.IDFromPublicKey(pub)
-	Expect(err).NotTo(HaveOccurred())
-
-	privkeyb, err := ci.MarshalPrivateKey(priv)
-	Expect(err).NotTo(HaveOccurred())
-
-	c := config.Config{}
-	// don't set bootstrap addresses. no need for test node to bootstrap...
-	// 	c.Bootstrap = config.DefaultBootstrapAddresses
-	c.Addresses.Swarm = []string{"/ip4/18.0.0.1/tcp/4001"}
-	c.Identity.PeerID = pid.Pretty()
-	c.Identity.PrivKey = base64.StdEncoding.EncodeToString(privkeyb)
-
-	return &repo.Mock{
-		D: dstore,
-		C: c,
-		K: keystore.NewMemKeystore(),
-	}
-}
-
-// this is in a test, so cant re-use it
-
+// this function is in a test package in ipfs, so i copy pasted it here with minor modifications
 func MakeAPISwarm(ctx context.Context) ([]coreiface.CoreAPI, func(), error) {
 	n := 5
 	fullIdentity := true
@@ -240,7 +226,8 @@ func MakeAPISwarm(ctx context.Context) ([]coreiface.CoreAPI, func(), error) {
 		}
 
 		c := config.Config{}
-		c.Addresses.Swarm = []string{fmt.Sprintf("/ip4/18.0.%d.1/tcp/4001", i)}
+		c.Addresses.Swarm = []string{fmt.Sprintf("/ip4/127.0.0.1/tcp/400%d", i+1)}
+		c.Addresses.API = []string{"/ip4/127.0.0.1/tcp/0"}
 		c.Identity = ident
 		c.Experimental.FilestoreEnabled = true
 
@@ -293,4 +280,112 @@ func MakeAPISwarm(ctx context.Context) ([]coreiface.CoreAPI, func(), error) {
 			n.Close()
 		}
 	}, nil
+}
+
+// no good way of stopping docker registry, so  i copied it and added shutdown method.
+type testRegistry struct {
+	config *configuration.Configuration
+	app    *handlers.App
+	server *http.Server
+}
+
+// NewRegistry creates a new registry from a context and configuration struct.
+func NewRegistry(ctx context.Context, config *configuration.Configuration) (*testRegistry, error) {
+	logrus.SetLevel(logrus.DebugLevel)
+	logrus.SetFormatter(&logrus.TextFormatter{
+		TimestampFormat: time.RFC3339Nano,
+	})
+
+	ctx = dcontext.WithLogger(ctx, dcontext.GetLogger(ctx))
+	dcontext.SetDefaultLogger(dcontext.GetLogger(ctx))
+
+	// inject a logger into the uuid library. warns us if there is a problem
+	// with uuid generation under low entropy.
+	uuid.Loggerf = dcontext.GetLogger(ctx).Warnf
+
+	app := handlers.NewApp(ctx, config)
+
+	server := &http.Server{
+		Handler: app,
+	}
+
+	return &testRegistry{
+		app:    app,
+		config: config,
+		server: server,
+	}, nil
+}
+
+func (registry *testRegistry) Shutdown() error {
+	return registry.server.Shutdown(context.Background())
+}
+
+// ListenAndServe runs the registry's HTTP server.
+func (registry *testRegistry) ListenAndServe() error {
+	config := registry.config
+
+	ln, err := listener.NewListener(config.HTTP.Net, config.HTTP.Addr)
+	if err != nil {
+		return err
+	}
+	if config.HTTP.TLS.Certificate != "" || config.HTTP.TLS.LetsEncrypt.CacheFile != "" {
+
+		dcontext.GetLogger(registry.app).Infof("restricting TLS version to %s or higher", config.HTTP.TLS.MinimumTLS)
+
+		tlsCipherSuites := []uint16{
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_AES_128_GCM_SHA256,
+			tls.TLS_CHACHA20_POLY1305_SHA256,
+			tls.TLS_AES_256_GCM_SHA384,
+		}
+
+		tlsConf := &tls.Config{
+			ClientAuth:               tls.NoClientCert,
+			NextProtos:               []string{"h2", "http/1.1"},
+			MinVersion:               tls.VersionTLS12,
+			PreferServerCipherSuites: true,
+			CipherSuites:             tlsCipherSuites,
+		}
+		tlsConf.Certificates = make([]tls.Certificate, 1)
+		tlsConf.Certificates[0], err = tls.LoadX509KeyPair(config.HTTP.TLS.Certificate, config.HTTP.TLS.Key)
+		if err != nil {
+			return err
+		}
+
+		ln = tls.NewListener(ln, tlsConf)
+		dcontext.GetLogger(registry.app).Infof("listening on %v, tls", ln.Addr())
+	} else {
+		dcontext.GetLogger(registry.app).Infof("listening on %v", ln.Addr())
+	}
+
+	if config.HTTP.DrainTimeout == 0 {
+		return registry.server.Serve(ln)
+	}
+
+	// setup channel to get notified on SIGTERM signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGTERM)
+	serveErr := make(chan error)
+
+	// Start serving in goroutine and listen for stop signal in main thread
+	go func() {
+		defer GinkgoRecover()
+		serveErr <- registry.server.Serve(ln)
+	}()
+
+	select {
+	case err := <-serveErr:
+		return err
+	case <-quit:
+		dcontext.GetLogger(registry.app).Info("stopping server gracefully. Draining connections for ", config.HTTP.DrainTimeout)
+		// shutdown the server with a grace period of configured timeout
+		c, cancel := context.WithTimeout(context.Background(), config.HTTP.DrainTimeout)
+		defer cancel()
+		return registry.server.Shutdown(c)
+	}
 }
