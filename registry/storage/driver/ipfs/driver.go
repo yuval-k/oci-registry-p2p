@@ -65,9 +65,9 @@ type Driver struct {
 }
 
 type DriverParameters struct {
-	Address  string `json:"address"`
-	IpnsKey  string `json:"ipns_key"`
-	ReadOnly bool   `json:"read_only"`
+	Address  string `json:"ipfsaddress"`
+	IpnsKey  string `json:"ipnskey"`
+	ReadOnly bool   `json:"readonly"`
 }
 
 // Create returns a new storagedriver.StorageDriver with the given parameters

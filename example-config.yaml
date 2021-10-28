@@ -8,7 +8,10 @@ log:
     service: registry
     environment: staging
 storage:
-  ipfs: {}
+  ipfs:
+    ipfs_node_address: /ip4/127.0.0.1/tcp/5001
+    ipns_key: self
+
 http:
   addr: localhost:5000
   net: tcp
@@ -17,6 +20,8 @@ http:
   secret: asecretforlocaldevelopment
   relativeurls: true
   draintimeout: 60s
+  debug:
+    addr: localhost:5001
   headers:
     X-Content-Type-Options: [nosniff]
   http2:

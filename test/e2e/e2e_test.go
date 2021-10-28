@@ -46,7 +46,8 @@ import (
 )
 
 var (
-	i = 0
+	i                = 0
+	ContainerRuntime = "podman"
 )
 
 var _ = Describe("E2e", func() {
@@ -82,7 +83,6 @@ var _ = Describe("E2e", func() {
 		ipnsKey = key.ID().Pretty()
 
 		logrus.SetOutput(GinkgoWriter)
-
 	})
 
 	runRegistry := func() {
@@ -143,18 +143,35 @@ var _ = Describe("E2e", func() {
 	})
 
 	It("should push and pull image", func() {
-		cmd := exec.Command("podman", "push", "localhost:5000/alpine", "--tls-verify=false")
+		cmd := exec.Command(ContainerRuntime, "push", "localhost:5000/alpine", "--tls-verify=false")
 		cmd.Stdout = GinkgoWriter
 		cmd.Stderr = GinkgoWriter
 		err := cmd.Run()
 		Expect(err).NotTo(HaveOccurred())
-		err = exec.Command("podman", "pull", "localhost:5000/alpine", "--tls-verify=false").Run()
+		err = exec.Command(ContainerRuntime, "pull", "localhost:5000/alpine", "--tls-verify=false").Run()
 		Expect(err).NotTo(HaveOccurred())
+	})
+
+	Context("ipns self", func() {
+
+		BeforeEach(func() {
+			ipnsKey = "self"
+		})
+
+		It("should push and pull image", func() {
+			cmd := exec.Command(ContainerRuntime, "push", "localhost:5000/alpine", "--tls-verify=false")
+			cmd.Stdout = GinkgoWriter
+			cmd.Stderr = GinkgoWriter
+			err := cmd.Run()
+			Expect(err).NotTo(HaveOccurred())
+			err = exec.Command(ContainerRuntime, "pull", "localhost:5000/alpine", "--tls-verify=false").Run()
+			Expect(err).NotTo(HaveOccurred())
+		})
 	})
 
 	Context("publish survies restart", func() {
 		It("should push and pull image", func() {
-			cmd := exec.Command("podman", "push", "localhost:5000/alpine", "--tls-verify=false")
+			cmd := exec.Command(ContainerRuntime, "push", "localhost:5000/alpine", "--tls-verify=false")
 			cmd.Stdout = GinkgoWriter
 			cmd.Stderr = GinkgoWriter
 			err := cmd.Run()
@@ -166,7 +183,7 @@ var _ = Describe("E2e", func() {
 			By("restarting the registry")
 			stopRegistry()
 			runRegistry()
-			cmd = exec.Command("podman", "pull", "localhost:5000/alpine", "--tls-verify=false")
+			cmd = exec.Command(ContainerRuntime, "pull", "localhost:5000/alpine", "--tls-verify=false")
 			cmd.Stdout = GinkgoWriter
 			cmd.Stderr = GinkgoWriter
 			err = cmd.Run()
@@ -176,6 +193,25 @@ var _ = Describe("E2e", func() {
 
 })
 
+var _ = BeforeSuite(func() {
+
+	if os.Getenv("USE_DOCKER") == "1" {
+		ContainerRuntime = "docker"
+	}
+
+	cmd := exec.Command(ContainerRuntime, "pull", "docker.io/library/alpine:3.10.1")
+	cmd.Stdout = GinkgoWriter
+	cmd.Stderr = GinkgoWriter
+	cmd.Run()
+	cmd = exec.Command(ContainerRuntime, "tag", "docker.io/library/alpine:3.10.1", "localhost:5000/alpine")
+	cmd.Stdout = GinkgoWriter
+	cmd.Stderr = GinkgoWriter
+	cmd.Run()
+})
+
+// I created thsi test factory so i can better control the create code
+// for example, pass context to the driver, so i can cancel it for the
+// restart test.
 type testDriverFactory struct {
 	api     coreiface.CoreAPI
 	ipnsKey string
@@ -196,6 +232,7 @@ func (s *testDriverFactory) Create(parameters map[string]interface{}) (storagedr
 
 // this function is in a test package in ipfs, so i copy pasted it here with minor modifications
 func MakeAPISwarm(ctx context.Context) ([]coreiface.CoreAPI, func(), error) {
+	// note that for ipns publish to work, we need more than one node.
 	n := 5
 	fullIdentity := true
 	mn := mocknet.New(ctx)
@@ -240,12 +277,12 @@ func MakeAPISwarm(ctx context.Context) ([]coreiface.CoreAPI, func(), error) {
 		}
 
 		node, err := core.NewNode(ctx, &core.BuildCfg{
-			Routing: libp2p.DHTServerOption,
-			Repo:    r,
-			Host:    mock.MockHostOption(mn),
-			Online:  fullIdentity,
+			Routing:   libp2p.DHTServerOption,
+			Repo:      r,
+			Host:      mock.MockHostOption(mn),
+			Online:    fullIdentity,
 			ExtraOpts: map[string]bool{
-				"pubsub": true,
+				//		"pubsub": true,
 			},
 		})
 		if err != nil {
@@ -282,7 +319,7 @@ func MakeAPISwarm(ctx context.Context) ([]coreiface.CoreAPI, func(), error) {
 	}, nil
 }
 
-// no good way of stopping docker registry, so  i copied it and added shutdown method.
+// there is no good way of stopping docker registry, So i copied a simplified version of it and added shutdown method.
 type testRegistry struct {
 	config *configuration.Configuration
 	app    *handlers.App

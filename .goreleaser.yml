@@ -4,8 +4,7 @@ before:
   hooks:
     # You may remove this if you don't use go modules.
     - go mod tidy
-    # you may remove this if you don't need go generate
-    - go generate ./...
+    - go test ./...
 builds:
   - env:
       - CGO_ENABLED=0
@@ -23,6 +22,10 @@ builds:
     goarm:
       - 7
     binary: oci-registry-p2p
+    flags:
+      - -trimpath #removes all file system paths from the compiled executable
+    ldflags:
+      - '-s -w -X {{ .ModulePath }}/version.Version={{.Version}} -X {{ .ModulePath }}/version.VersionPrerelease= -X {{ .ModulePath }}/version.Commit={{ .FullCommit }}'
 
 archives:
   - replacements:
@@ -35,7 +38,6 @@ checksum:
   name_template: 'checksums.txt'
 snapshot:
   name_template: "{{ .Tag }}-next"
-
 
 dockers:
 - image_templates:
@@ -109,6 +111,7 @@ docker_manifests:
     - 'docker.io/uvgroovy/oci-registry-p2p:{{ .Tag }}-arm64'
 
 changelog:
+  skip: true
   sort: asc
   filters:
     exclude:

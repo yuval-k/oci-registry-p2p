@@ -1,9 +1,5 @@
-build:
-	bazel build --platforms=@io_bazel_rules_go//go/toolchain:linux_arm64 //ci:registry
-	bazel build --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 //ci:registry
-
 TAG=0.2.1
-REPO=p2p-registry
+REPO=oci-p2p-registry
 REGISTRY=docker.io/uvgroovy
 PUSH_FLAGS=
 
