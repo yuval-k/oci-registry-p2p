@@ -1,3 +1,9 @@
-registry_linux_arm64
-registry_linux
 dist/
+oci-registry-p2p
+
+# Only allow certs in test dir, so it's clear they shouldn't be used/trusted.
+cert.pem
+!/test/*/cert.pem
+
+key.pem
+!/test/*/key.pem

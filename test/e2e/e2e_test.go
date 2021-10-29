@@ -52,16 +52,16 @@ var (
 
 var _ = Describe("E2e", func() {
 	var (
-		ctx    context.Context
-		cancel context.CancelFunc
-		//node       *ipfscore.IpfsNode
-		api        coreiface.CoreAPI
-		driverName string
-		config     *configuration.Configuration
-		wait       chan struct{}
-		reg        *testRegistry
-		ipnsKey    string
-		closeNodes func()
+		ctx              context.Context
+		cancel           context.CancelFunc
+		api              coreiface.CoreAPI
+		driverName       string
+		config           *configuration.Configuration
+		wait             chan struct{}
+		reg              *testRegistry
+		ipnsKey          string
+		ipnsReadOnlyKeys []string
+		closeNodes       func()
 
 		tdf *testDriverFactory
 	)
@@ -93,9 +93,10 @@ var _ = Describe("E2e", func() {
 		driverName = fmt.Sprintf("%s%d", ipfsdriver.DriverName, i)
 
 		tdf = &testDriverFactory{
-			api:     api,
-			ipnsKey: ipnsKey,
-			ctx:     ctx,
+			api:              api,
+			ipnsKey:          ipnsKey,
+			ipnsReadOnlyKeys: ipnsReadOnlyKeys,
+			ctx:              ctx,
 		}
 		// register factory...
 		factory.Register(driverName, tdf)
@@ -191,6 +192,32 @@ var _ = Describe("E2e", func() {
 		})
 	})
 
+	Context("read only", func() {
+		It("should pull from read only repo", func() {
+			cmd := exec.Command(ContainerRuntime, "push", "localhost:5000/alpine", "--tls-verify=false")
+			cmd.Stdout = GinkgoWriter
+			cmd.Stderr = GinkgoWriter
+			err := cmd.Run()
+			Expect(err).NotTo(HaveOccurred())
+
+			// give time for the registry to flush data and save the new root
+			time.Sleep(time.Second * 5)
+			// restart registry to make sure it persisted
+			By("restarting the registry")
+			stopRegistry()
+
+			ipnsReadOnlyKeys = []string{ipnsKey}
+			ipnsKey = ""
+
+			runRegistry()
+			cmd = exec.Command(ContainerRuntime, "pull", "localhost:5000/alpine", "--tls-verify=false")
+			cmd.Stdout = GinkgoWriter
+			cmd.Stderr = GinkgoWriter
+			err = cmd.Run()
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
 })
 
 var _ = BeforeSuite(func() {
@@ -213,15 +240,16 @@ var _ = BeforeSuite(func() {
 // for example, pass context to the driver, so i can cancel it for the
 // restart test.
 type testDriverFactory struct {
-	api     coreiface.CoreAPI
-	ipnsKey string
-	ctx     context.Context
-	driver  *ipfsdriver.IpfsDriver
+	api              coreiface.CoreAPI
+	ipnsKey          string
+	ipnsReadOnlyKeys []string
+	ctx              context.Context
+	driver           *ipfsdriver.IpfsDriver
 }
 
 func (s *testDriverFactory) Create(parameters map[string]interface{}) (storagedriver.StorageDriver, error) {
 	var err error
-	s.driver, err = ipfsdriver.NewDriverFromAPI(s.ctx, s.api, s.ipnsKey, false)
+	s.driver, err = ipfsdriver.NewDriverFromAPI(s.ctx, s.api, s.ipnsKey, s.ipnsReadOnlyKeys)
 	go func() {
 		defer GinkgoRecover()
 		<-s.ctx.Done()

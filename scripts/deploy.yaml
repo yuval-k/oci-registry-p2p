@@ -24,15 +24,7 @@ spec:
         - name: cache
           persistentVolumeClaim:
             claimName: cache
-  volumeClaimTemplates:
-  - metadata:
-      name: cache
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      storageClassName: "my-storage-class"
-      resources:
-        requests:
-          storage: 1Gi
+
 ---
 apiVersion: apps/v1
 kind: Deployment

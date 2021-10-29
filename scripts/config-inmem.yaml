@@ -8,9 +8,7 @@ log:
     service: registry
     environment: staging
 storage:
-  ipfs:
-    ipfsapiaddress: /ip4/127.0.0.1/tcp/5001
-    writeipnskey: self
+  inmemory: {}
 
 http:
   addr: localhost:5000
