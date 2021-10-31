@@ -10,12 +10,12 @@ data:
     version: 0.1
     log:
       accesslog:
-        disabled: true  # TODO
+        disabled: true
       level: debug
       formatter: text
       fields:
         service: registry
-        environment: staging  # TODO
+        environment: staging
     storage:
       ipfs:
         ipfsapiaddress: {{ .Values.ipfs.address | quote  }}
@@ -25,13 +25,12 @@ data:
     http:
       addr: 0.0.0.0:5000
       net: tcp
-      prefix: /  # TODO
+      prefix: /
       host: {{ .Values.registry.http.host }}
-      secret: {{ randAlphaNum 16}}
       relativeurls: true
       draintimeout: 60s
       debug:
-        addr: 0.0.0.0:5001 # TODO
+        addr: 0.0.0.0:5001
         prometheus:
           enabled: true
           path: /metrics
