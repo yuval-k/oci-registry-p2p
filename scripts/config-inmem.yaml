@@ -25,5 +25,5 @@ http:
   http2:
     disabled: false
   tls:
-    certificate: cert.pem
-    key: key.pem
+    certificate: test/e2e/cert.pem
+    key: test/e2e/key.pem

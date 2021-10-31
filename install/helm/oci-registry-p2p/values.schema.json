@@ -72,29 +72,24 @@
       },
       "type": "object"
     },
-    "orbitdb": {
-      "description": "Container Image",
+    "ipfs": {
+      "description": "IPFS Properties",
       "properties": {
-        "ipfsPath": {
-          "description": "ipfs peer address. e.g: /ip4/127.0.0.1/tcp/5001",
+        "address": {
+          "description": "ipfs node address. e.g: /ip4/127.0.0.1/tcp/5001",
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "publishIpnsKey": {
+          "description": "Save the MFS root to this IPNS key. Defaults to \"self\". set to empty string to use read-only mode",
           "type": "string"
         },
-        "orbitdbAddress": {
-          "description": "DB address. The repo comes with a helper script to create a DB.",
-          "type": "string"
-        },
-        "publishIPNS": {
-          "description": "Save snapshots to ipns. This is needed to survive restarts",
-          "type": "string"
-        },
-        "ipnsSnapshotKey": {
-          "description": "IPNS key to save to. use `ipfs key list -l` to get the list of existing keys.",
+        "readonlyipnskeys": {
+          "description": "Comma separated list of IPNS MFD roots to read from. This enables replication of remote registries.",
           "type": "string"
         }
       },
       "required": [
-        "ipfsPath",
-        "orbitdbAddress"
+        "address"
       ],
       "type": "object"
     },
@@ -121,34 +116,34 @@
         }
       },
       "type": "object"
-    }
-  },
-  "service": {
-    "description": "Service properties",
-    "properties": {
-      "type": {
-        "type": "string",
-        "enum": [
-          "ClusterIP",
-          "NodePort",
-          "ExternalName",
-          "LoadBalancer"
-        ]
-      },
-      "port": {
-        "type": "integer"
-      },
-      "annotations": {
-        "$ref": "#/definitions/mapString"
-      }
     },
-    "type": "object"
+    "service": {
+      "description": "Service properties",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "ClusterIP",
+            "NodePort",
+            "ExternalName",
+            "LoadBalancer"
+          ]
+        },
+        "port": {
+          "type": "integer"
+        },
+        "annotations": {
+          "$ref": "#/definitions/mapString"
+        }
+      },
+      "type": "object"
+    }
   },
   "resources": {
     "$ref": "#/definitions/io.k8s.api.core.v1.ResourceRequirements"
   },
   "required": [
-    "orbitdb"
+    "ipfs"
   ],
   "definitions": {
     "io.k8s.apimachinery.pkg.api.resource.Quantity": {
@@ -180,7 +175,11 @@
       "additionalProperties": {
         "type": "string"
       }
-    }
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+  }
   },
   "title": "Values",
   "type": "object"

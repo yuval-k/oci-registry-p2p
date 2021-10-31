@@ -17,12 +17,10 @@ data:
         service: registry
         environment: staging  # TODO
     storage:
-      orbitdb:
-        address: {{ .Values.orbitdb.ipfsPath }}
-        db_address: {{ .Values.orbitdb.orbitdbAddress }}
-        cache_dir: /cache
-        publishipns: {{ .Values.orbitdb.publishIPNS }}
-        ipnskey: {{ .Values.orbitdb.ipnsSnapshotKey }}
+      ipfs:
+        ipfsapiaddress: {{ .Values.ipfs.address | quote  }}
+        writeipnskey: {{ .Values.ipfs.publishIpnsKey | quote  }}
+        readonlyipnskeys: {{ .Values.ipfs.readonlyipnskeys | quote }}
 
     http:
       addr: 0.0.0.0:5000

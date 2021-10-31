@@ -3,10 +3,7 @@ module github.com/yuval-k/oci-registry-p2p
 go 1.16
 
 require (
-	berty.tech/go-orbit-db v1.13.1
 	github.com/distribution/distribution/v3 v3.0.0-20210602065436-4f27e1934ccc
-	github.com/gofrs/uuid v4.0.0+incompatible // indirect
-	github.com/goreleaser/goreleaser v0.169.0
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-datastore v0.4.6
 	github.com/ipfs/go-filestore v0.0.3
@@ -24,6 +21,6 @@ require (
 	github.com/libp2p/go-libp2p-core v0.9.0
 	github.com/multiformats/go-multiaddr v0.4.0
 	github.com/onsi/ginkgo v1.16.4
-	github.com/onsi/gomega v1.13.0
+	github.com/onsi/gomega v1.16.0
 	github.com/sirupsen/logrus v1.8.1
 )

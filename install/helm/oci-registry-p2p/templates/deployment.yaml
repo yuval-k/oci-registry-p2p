@@ -1,17 +1,16 @@
 apiVersion: apps/v1
-{{- if .Values.deployment.statefulSet }}
-kind: StatefulSet
-{{- else }}
 kind: Deployment
-{{- end }}
 metadata:
   name: {{ include "oci-registry-p2p.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "oci-registry-p2p.labels" . | nindent 4 }}
+  annotations:
+    checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+
 spec:
 {{- if .Values.deployment.statefulSet }}
-  serviceName: {{ include "oci-registry-p2p.fullname" . }}
+  serviceName: 
 {{- end }}
 {{- if .Values.deployment.replicaCount }}
   replicas: {{ .Values.deployment.replicaCount }}
@@ -44,21 +43,6 @@ spec:
         - serve
         - /config/config.yaml
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        env:
-        - name: REGISTRY_STORAGE_ORBITDB_ADDRESS
-          value: {{ .Values.orbitdb.ipfsPath | quote }}
-        - name: REGISTRY_STORAGE_ORBITDB_DBADDRESS
-          value: {{ .Values.orbitdb.orbitdbAddress | quote }}
-{{- if .Values.deployment.statefulSet }}
-        - name: REGISTRY_STORAGE_ORBITDB_CACHEDIR
-          value: /cache
-{{- end }}
-{{- if .Values.orbitdb.publishipns }}
-        - name: REGISTRY_STORAGE_ORBITDB_IPNSKEY
-          value: {{ .Values.orbitdb.ipnskey | quote }}
-{{- end }}
-        - name: REGISTRY_STORAGE_ORBITDB_PUBLISHIPNS
-          value: {{ .Values.orbitdb.publishipns | quote }}
         ports:
           - name: http
             containerPort: 5000
@@ -66,10 +50,6 @@ spec:
           - name: debug
             containerPort: 5001
             protocol: TCP
-        # livenessProbe:
-        #   httpGet:
-        #     path: /
-        #     port: http
         readinessProbe:
           httpGet:
 {{- if .Values.tls.enabled }}

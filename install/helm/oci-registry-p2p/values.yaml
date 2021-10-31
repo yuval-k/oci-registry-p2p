@@ -10,11 +10,10 @@ deployment:
   replicaCount: 1
   statefulSet: false
 
-orbitdb:
-  ipfsPath: /ip4/192.168.1.3/tcp/31341
-  orbitdbAddress: /orbitdb/bafyreicy76ezsk3dx6yeoemlajkddezkmfxwfruuub7r27gr7fwuou3rhi/test
-  publishipns: false
-  ipnskey: ""
+ipfs:
+  address: ""
+  publishIpnsKey: self
+  readonlyipnskeys: ""
 
 image:
   repository: oci-registry-p2p
@@ -36,7 +35,8 @@ serviceAccount:
 
 
 podSecurityContext:
-  fsGroup: 2000
+  fsGroup: 10101
+  runAsUser: 10101
 
 securityContext:
   capabilities:
