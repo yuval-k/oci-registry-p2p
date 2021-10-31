@@ -57,6 +57,7 @@ helm-package: dist/helm/oci-registry-p2p-$(TAG).tgz
 images: dist/arm64/oci-registry-p2p.tar dist/armv7/oci-registry-p2p.tar dist/amd64/oci-registry-p2p.tar
 
 image: images
+	$(CONTAINER_RUNTIME) manifest rm $(IMAGE_NAME) || exit 0 # cleanup old manifest, if exists
 	$(CONTAINER_RUNTIME) manifest create $(IMAGE_NAME)
 
 	$(CONTAINER_RUNTIME) push $(IMAGE_NAME)-arm64 $(PUSH_FLAGS)
