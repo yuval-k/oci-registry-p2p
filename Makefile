@@ -34,7 +34,7 @@ dist/arm64/oci-registry-p2p.tar: dist/arm64/oci-registry-p2p
 	$(CONTAINER_RUNTIME) build -f Dockerfile --os linux --arch arm64 --variant v8 -t $(IMAGE_NAME)-arm64 --build-arg ARCH=linux/arm64 -f Dockerfile dist/arm64
 	$(CONTAINER_RUNTIME) save $(IMAGE_NAME)-arm64 $(PUSH_FLAGS) > $@
 
-dist/arm7/oci-registry-p2p.tar: dist/armv7/oci-registry-p2p
+dist/armv7/oci-registry-p2p.tar: dist/armv7/oci-registry-p2p
 	$(CONTAINER_RUNTIME) build -f Dockerfile --os linux --arch arm --variant v7 -t $(IMAGE_NAME)-armv7 --build-arg ARCH=linux/arm/v7 -f Dockerfile dist/armv7
 	$(CONTAINER_RUNTIME) save $(IMAGE_NAME)-armv7 $(PUSH_FLAGS) > $@
 
@@ -47,11 +47,14 @@ install-tools:
 	curl -sSL -O https://get.helm.sh/helm-v3.7.1-linux-amd64.tar.gz	| tar -zxv
 	mv linux-amd64/helm ./.bin/helm
 
-dist/helm/oci-registry-p2p.tar.gz:
+dist/helm/oci-registry-p2p-$(TAG).tgz:
+	helm lint --set ipfs.address=a install/helm/oci-registry-p2p
 	mkdir -p dist/helm
-	helm package install/helm/oci-registry-p2p --destination dist/helm/ --version $(TAG)
+	helm package install/helm/oci-registry-p2p --destination dist/helm/ --version $(TAG) --app-version $(TAG)
 
-images: dist/arm64/oci-registry-p2p.tar dist/arm7/oci-registry-p2p.tar dist/amd64/oci-registry-p2p.tar
+helm-package: dist/helm/oci-registry-p2p-$(TAG).tgz
+
+images: dist/arm64/oci-registry-p2p.tar dist/armv7/oci-registry-p2p.tar dist/amd64/oci-registry-p2p.tar
 
 image: images
 	$(CONTAINER_RUNTIME) manifest create $(IMAGE_NAME)

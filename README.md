@@ -1,21 +1,6 @@
-What is this?
-
-Docker registry backed by IPFS / OrbitDB
-
-How to use this project??
-
-
-TODOs:
-- fill in this readme
-- figure out CI
-- add some content to ipfs registry on cluster
-- update readme with ipfs content
-- that's it :)
-
-Demos:
-  quick demo with "ipfs daemon --init --init-profile=test --debug" and ./registry -c config
-  quick demo with docker compose
-  quick demo with kubernetes
+A IPFS backed storage implementation for docker/OCI registry. This Project brings together cloud-native and peer-to-peer by enabling you
+# What is this?
+to have p2p registries - an ability to fetch remote images without being directly connected to the remote registry the image was pushed to.
 # What is this good for?
 
 The core idea here is to re-use MFS, but instead of saving the root node in our ipfs node datastore (where it is only reachable to use),
@@ -25,7 +10,6 @@ replicate off of it should not be effected, thus enabling distributed p2p OCI re
 
 This is done by implementing the registry's storage driver. While the storage layout may not be guaranteed
 to be the same over future versions of the registry, this is probably good enough™.
-
 
 You can provide this repo and IPNS key from which it will read and write the MFS root (this is the root of the registry's storage).
 In addition, you can provide a list of read only IPNS keys. If a path is not found in the write IPNS key, it will be searched in order in these keys. This allows mirroring of registries in remote nodes, while still being able
@@ -63,6 +47,11 @@ docker tag docker.io/library/alpine:3.10.1 localhost:5000/alpine
 docker push localhost:5000/alpine --tls-verify=false
 ```
 
+The example config has a remote registry preconfigured. To pull an image from a remote registry, just do:
+```
+docker pull localhost:5000/hello@sha<TODO>
+```
+
 Note: that registry configuration parameters can be also be changed via environment variables. For example:
 
 ```
@@ -82,184 +71,39 @@ Note: Pushing It may take a minute, as publishing to IPNS takes time. In the fut
 
 ## Kubernetes
 
+Install IPFS:
+
+Install this project:
+
 # Security
+
 Running binary blobs from internet strangers is generally not a good idea.
 Best practice is to use docker content addressing. i.e. instead of
+
 ```
 docker pull ubuntu:focal
 ```
-do:
+
+Do:
+
 ```
 docker pull ubuntu@sha256:7cc0576c7c0ec2384de5cbf245f41567e922aab1b075f3e8ad565f508032df17
 ```
+
 Where the sha256 is retrieved from a trusted source. This guarantees that you get the current image.
 
+# Use Cases
 
+## Regular registry backed by IPFS
+While not suited to large enterprises with large amount of writes, may be suitable to a smaller environment
+that already has an IPFS node, Re-using the IPFS node to hold state.
+## Read-only from remote registry
+You can check out my registry, at the IPNS address: `k51qzi5uqu5dlj2qkibv67ep4sdsa73s9asv2g3um5j441i80ks15e1afi7waz`
+## Read-and-write
 
-# #########################################################3
-TODO: include ipfs as subchart?
-Our helm chart also includes IPFS with the proper settings
+Combination of above cases, where you can push to your own registry, while also using images from other registries.
 
+# FAQ
 
-The core idea here is to re-use MFS, but instead of saving the root node in our ipfs node datastore,
-we save and publish it to ipns. This way, buy knowing the ipns CID you can replicate the OCI registry.
-
-You can use in 2 modes:
-- write mode:
-  - this is the default
-  - there should only be 1 writer node for any ipns key
-- read mode
-  - read replicas for scale
-  - read replicas for someone else's repo!
-  - distributed docker registry!
-
-# demo:
-replicate my registery:
-
-ipfs cat <...> | kubectl apply -f -
-or
-ipfs cat ... | docker load
-dokcer run -p 5000 -ti docker.io/yuval-k/oci...:foo
-
-docker run localhost/helloworld:5000
-
-## Kubernetes
-
-Install IPFS:
-```
-kubectl create namespace registry
-helm upgrade -i --namespace registry --version 0.4.2 registryipfs stable/ipfs --set swarm.enabled=true --set persistence.enabled=true
-```
-
-enable the pubsub experiment:
-
-```
-kubectl patch statefulset -n registry registryipfs-ipfs --type='strategic' -p '{"spec":{"template":{"spec":{"containers":[{"name":"ipfs","args":["daemon", "--migrate=true", "--enable-pubsub-experiment", "--enable-namesys-pubsub"]}]}}}}'
-
-kubectl -n registry rollout status statefulset/registryipfs-ipfs
-```
-
-create a db:
-```
-kubectl port-forward -n registry svc/registryipfs-ipfs 5001&
-DB=$(go run scripts/createdb.go)
-```
-
-for local kind dev - build docker image
-```
-docker build -t oci-registry-p2p:dev .
-```
-load it into kind:
-```
-kind load docker-image oci-registry-p2p:dev
-```
-Or, load it into your node directly (this is for single node clusters):
-```
-docker save oci-registry-p2p:dev | ssh <your node> docker load
-```
-
-install registry:
-```
-helm --namespace registry upgrade -i registry ./install/helm/oci-registry-p2p --set orbitdb.orbitdbAddress=$DB --set orbitdb.ipfsPath=/dns4/registryipfs-ipfs.registry.svc.cluster.local/tcp/5001 --set image.repository=oci-registry-p2p --set image.tag=dev
-
-kubectl -n registry rollout status deployment/registry-oci-registry-p2p
-```
-see more helm values in values.yaml.
-
-port forward and push!
-
-```
-PORT=$(kubectl get service -n registry registry-oci-registry-p2p -o jsonpath='{.spec.ports[?(@.name=="http")].port}')
-kubectl port-forward -n registry svc/registry-oci-registry-p2p 5000:$PORT &
-podman pull alpine:3.10.1
-podman tag alpine:3.10.1 localhost:5000/alpine
-podman push localhost:5000/alpine --tls-verify=false
-```
-
-## Systemd (Raspberry PI, ubuntu, etc...)
-
-TODO
-make
-cp binary /usr/local/bin/binary
-cp install/svc.unit /etc.....
-systemctl reload
-systemctl enable start
-
-# Persistency
-
-This chart can be deployed in two ways. Deployment or StatefulSet.
-When deployed as a stateful set, Orbitdb will flush it's state to a cache volume when a write occures. This allows restarting it.
-
-When deploying as a deployment you can set `publishipns` to publish
-the snapshot to the node's `ipns` key. you can customize the key name with `ipnskey` setting. This backup is less preferred as it doesn't save the replication queue, but allows for simpler deployment.
-
-To create a custom `ipnskey`, run the following command:
-```
-ipfs key gen registry
-```
-View existing keys with
-```
-ipfs key list -l
-```
-
-# Configuring access
-
-- get a cert from lets encrypt
-  - option1: create wasm filter that answers http01. cert manager supports arm!
-  - push docker zbam zbam zbam
-  - create issuer, once the challenge is created, route to the challenge pod
-
-
-TODO
-## Security
-
-Make sure to secure your configuration! running in container recommended!
-
-## Firewall
-
-TODO
-## DNS
-
-AWS
-
-
-## TLS Certificate
-
-Lets encrypt
-
-TODO
-
-# Using
-
-Once installed, use just like a normal registry!
-
-Get yourself certificates using Let's encrypt
-
-push / pull!
-
-
-# Replicating
-
-Using IPFS allows you to use someone elses registry; simply follow the setup with someone elses db-id (orbitdbAddress).
-read only of course. you can do this locally:
-oci... -ipfsnode -db-id='...=
-
-
-# new simpler design:
-- no orbit db
-- single master for writing
-- multiple replicas for reading
-- sync root hash to replicas
-- master does auth like any other way
-- master signs hash with some public key so slaves know it is legit
-- ?!
-- master needs to just serialize one thing, that root hash in ipns
-- slaves follow the ipns name
-
-- read root into memory
-- manipulate memory
-- flush new root
-
-
-# How to proxy registry
-This allows you to push/pull to your ipfs node and pull from a remote one at the same time
+## I see `failed to find any peer in table` in the logs.
+It seems that your node needs to be connected to more nodes to publish IPNS.
