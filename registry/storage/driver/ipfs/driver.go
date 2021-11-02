@@ -143,7 +143,6 @@ func Wrap(d *IpfsDriver) storagedriver.StorageDriver {
 }
 
 func getProtoNodeForKey(ctx context.Context, api coreapi.CoreAPI, ipnsKey string) (*merkledag.ProtoNode, error) {
-
 	var resolved ipfspath.Resolved
 	path, err := api.Name().Resolve(ctx, ipnsKey)
 	if err == nil {
@@ -164,12 +163,13 @@ func getProtoNodeForKey(ctx context.Context, api coreapi.CoreAPI, ipnsKey string
 		return nd, nil
 	case err == nil:
 		c := resolved.Cid()
-
-		dcontext.GetLoggerWithField(ctx, "ipns-value", c.String()).Debug("resolved initial ipns root entry")
+		l := dcontext.GetLoggerWithField(ctx, "ipns-value", c.String())
+		l.Debug("resolving initial ipns root entry")
 		rnd, err := dag.Get(ctx, c)
 		if err != nil {
 			return nil, fmt.Errorf("error loading filesroot from DAG: %s", err)
 		}
+		l.Debug("resolved node from initial ipns root entry")
 
 		nd, ok := rnd.(*merkledag.ProtoNode)
 		if !ok {
