@@ -11,7 +11,7 @@ storage:
   ipfs:
     ipfsapiaddress: /ip4/127.0.0.1/tcp/5001
     writeipnskey: self
-    readonlyipnskeys: []
+    readonlyipnskeys: "k51qzi5uqu5dlj2qkibv67ep4sdsa73s9asv2g3um5j441i80ks15e1afi7waz"
 
 http:
   addr: localhost:5000
@@ -22,7 +22,7 @@ http:
   relativeurls: true
   draintimeout: 60s
   debug:
-    addr: localhost:5001
+    addr: localhost:5010
   headers:
     X-Content-Type-Options: [nosniff]
   http2:
