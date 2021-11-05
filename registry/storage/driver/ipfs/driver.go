@@ -142,6 +142,16 @@ func Wrap(d *IpfsDriver) storagedriver.StorageDriver {
 	}
 }
 
+func resolveKeyName(keys []coreapi.Key, ipnsKey string) string {
+
+	for _, key := range keys {
+		if key.Name() == ipnsKey {
+			return key.Path().String()
+		}
+	}
+	return ipnsKey
+}
+
 func getProtoNodeForKey(ctx context.Context, api coreapi.CoreAPI, ipnsKey string) (*merkledag.ProtoNode, error) {
 	var resolved ipfspath.Resolved
 	path, err := api.Name().Resolve(ctx, ipnsKey)
@@ -155,6 +165,8 @@ func getProtoNodeForKey(ctx context.Context, api coreapi.CoreAPI, ipnsKey string
 	dag := api.Dag()
 	switch {
 	case err == coreapi.ErrResolveFailed || resolved == nil:
+		l := dcontext.GetLoggerWithField(ctx, "resolved", resolved).WithError(err)
+		l.Debug("resolving initial ipns root failed or missing entry")
 		nd := unixfs.EmptyDirNode()
 		err := dag.Add(ctx, nd)
 		if err != nil {
@@ -190,7 +202,12 @@ func NewDriverFromAPI(ctx context.Context, api coreapi.CoreAPI, ipnsKeyWrite str
 	}()
 	dag := api.Dag()
 
+	if keys, err := api.Key().List(ctx); err == nil {
+		driver.keys = keys
+	}
+
 	if ipnsKeyWrite != "" {
+		ipnsKeyWrite = resolveKeyName(driver.keys, ipnsKeyWrite)
 		driver.writeIpnsKey = ipnsKeyWrite
 		nd, err := getProtoNodeForKey(ctx, api, ipnsKeyWrite)
 		if err != nil {
@@ -206,6 +223,7 @@ func NewDriverFromAPI(ctx context.Context, api coreapi.CoreAPI, ipnsKeyWrite str
 	}
 
 	for _, ipnsKey := range ipnsKeyReadOnly {
+		ipnsKey = resolveKeyName(driver.keys, ipnsKey)
 		rrr, err := driver.newRefreshableReadonlyRoot(ipnsKey)
 		if err != nil {
 			return nil, err
@@ -224,6 +242,8 @@ func NewDriverFromAPI(ctx context.Context, api coreapi.CoreAPI, ipnsKeyWrite str
 type IpfsDriver struct {
 	api coreapi.CoreAPI
 	ctx context.Context
+
+	keys []coreapi.Key
 
 	writeIpnsKey string
 	writeRoot    *mfs.Root

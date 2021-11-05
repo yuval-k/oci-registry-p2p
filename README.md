@@ -29,7 +29,7 @@ cp test/e2e/key.pem .
 go run . serve scripts/example-config.yaml
 
 # Wait until the registry initializes (may take a minute), and then run the following in a third terminal:
-docker run --rm localhost:5000/hello@sha256:9f4274fe105c729b3351a326fae0f79dcc512a86d69efd3701f5872676a63b4a --tls-verify=false
+docker run --rm localhost:5000/hello@sha256:d6f8f32bc1fc6cd09ecc4634551219d7e941065a1ecc5363b6c1f84d85bc00ad --tls-verify=false
 ```
 # Quick 30 second demo.
 This assumes you already have an IPNS node on localhost (adjust config with node address otherwise).
@@ -137,4 +137,4 @@ Combination of above cases, where you can push to your own registry, while also 
 
 It may be a nicer experience to allow `docker pull image@CID` command, it's not as easy to implement 
 with current registry interfaces as far as I can tell. it might be possible with some more additional middleware. The advantage
-of this, is that you can have a registry set-up with minimal upfront configuration.
+of this, is that you can have a registry set-up with minimal upfront configuration, and no dependance on IPNS.
