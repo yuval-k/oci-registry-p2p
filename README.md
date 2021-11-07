@@ -51,6 +51,7 @@ podman push docker.io/library/alpine:3.10.1 oci:./images/alpine:3.10.1
 CID=$(ipfs add -Q -r --cid-version 1 ./images)
 
 # Now ou can use docker/podman to pull or run the image just added to IPFS!
+# note that you can also use /ipns names
 podman pull localhost:5000/ipfs/${CID}/alpine:3.10.1 --tls-verify=false
 podman run -ti --rm --tls-verify=false localhost:5000/ipfs/${CID}/alpine:3.10.1 /bin/sh
 ```
