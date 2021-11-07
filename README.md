@@ -11,7 +11,7 @@ to a different registry.
 To run this project, all you need is an [IPFS](https://ipfs.io/) node (that you own).
 To build it, you just need go (tested with go 1.16).
 
-# Quick 10 second demo.
+# Quick 10 second demo (storage driver mode).
 ```
 # In the first terminal run ipfs if not running
 ipfs daemon --init
@@ -25,7 +25,7 @@ go run . serve scripts/example-config.yaml
 docker run --rm localhost:5000/hello@sha256:d6f8f32bc1fc6cd09ecc4634551219d7e941065a1ecc5363b6c1f84d85bc00ad --tls-verify=false
 ```
 
-# Quick 30 second demo - pushing to MFS/IPNS.
+# Quick 30 second demo - pushing to MFS/IPNS (storage driver mode).
 This assumes you already have an IPNS node on localhost (adjust config with node address otherwise).
 
 To give this project a quick test, run it in one terminal:
@@ -59,7 +59,7 @@ export REGISTRY_STORAGE_IPFS_IPFSAPIADDRESS=/ip4/...
 See more info [here](https://docs.docker.com/registry/configuration/).
 
 Note: Pushing It may take a minute, as publishing to IPNS takes time. In the future we can trade off so of that time with less consistency. Pulling should be fast.
-# Quick 20 second demo - Pulling OCI Image directly from IPFS.
+# Quick 20 second demo - Pulling OCI Image directly from IPFS (middleware mode).
 With this mode, there is *no need* for any IPNS configuration for the registry.
 What we do instead, is place the container directly on an IPFS node in the OCI image format,
 and use the repository to pull it.
@@ -90,7 +90,7 @@ podman run -ti --rm --tls-verify=false localhost:5000/ipfs/${CID}/alpine:3.10.1 
 
 Note: A nice property of IPFS is that it will automatically de-duplicate the various layers.
 This means that if you push the same layer from multiple images, the layer will not use twice the storage.
-# Quick 30 second demo - Pulling OCI Image directly from IPFS.
+# Quick 30 second demo - Pulling OCI Image directly from IPFS (middleware mode).
 Following up from the demo above, we'll show how to get an OCI image to IPFS.
 As currently, pushing through the repository is not supported. With this example we will use  `podman` to pull a container from docker hub and "push" it to an OCI folder. We will then
 add that folder to IPFS.
@@ -137,7 +137,9 @@ Note: For the storage driver, if both `writeipnskey` and `readonlyipnskeys` are 
 
 Note: The registry middleware configuration only accepts the `ipfsapiaddress` parameter
 # Technical notes
-This registry adds to components that interact with IPFS. They are independent and you can use either of them or both of them.
+This registry adds to components that interact with IPFS. They are independent and you can use either of them or both of them:
+- Storage driver approach
+- Registry middleware approach
 ## Storage Driver
 This component allows you to use IPFS as a storage driver, abstracting IPFS form your users.
 To use this mode, you need to pre-configure IPNS addresses that will be used as the "root" folder
@@ -158,7 +160,9 @@ Note that if you have multiple instances deployed using the same IPNS key, at mo
 ## Registry Middleware
 The registry middleware component allows you to pull (but not push) images from any IPFS or IPNS address without pre-configuration (beyond the IPFS node). In this mode, IPFS is not abstracted from the user - The registry name represents an IPFS path that contains a folder layed-out as an [OCI image](https://github.com/opencontainers/image-spec/blob/main/image-layout.md).
 
-The advantage of this mode that no additional address configuration is needed.
+The advantage of this mode that no additional address configuration is needed. In addition, as this is based on the OCI Image spec, it is more likely to be future compatible.
+
+See more details in [docs/middleware.md](docs/middleware.md).
 # Installation
 TODO
 ## Systemd
@@ -172,7 +176,7 @@ TODO
 Install IPFS in your k8s environment. Then, Install this project:
 ```shell
 IPFS_ADDR=/dns4/<NAME.NAMESPACE of IPFS service>/tcp/5001
-REGISTRY_HOSTNAME=example.com # change this to the hostname is observed by clients
+REGISTRY_HOSTNAME=example.com # change this to the hostname as observed by clients
 
 # create a registry key
 ipfs --api=$IPFS_ADDR key gen registry
@@ -195,7 +199,7 @@ Do:
 docker pull ubuntu@sha256:7cc0576c7c0ec2384de5cbf245f41567e922aab1b075f3e8ad565f508032df17
 ```
 
-Where the sha256 is retrieved from a trusted source. This guarantees that you get the current image.
+Where the sha256 is retrieved from a trusted source. This guarantees that you get the correct image, regardless of who gives it to you.
 
 # Use Cases
 
@@ -212,10 +216,7 @@ Combination of above cases, where you can push to your own registry, while also 
 
 - I see `failed to find any peer in table` in the logs.
   It seems that your node needs to be connected to more nodes to publish IPNS.
-- Why have 2 independent components (storage driver and middleware)?
-  The test the two approaches as I'm not sure which will be more ergonomic longer term.
-# Future ideas
 
-It may be a nicer experience to allow `docker pull image@CID` command, it's not as easy to implement 
-with current registry interfaces as far as I can tell. it might be possible with some more additional middleware. The advantage
-of this, is that you can have a registry set-up with minimal upfront configuration, and no dependance on IPNS.
+- Why have 2 independent components (storage driver and middleware)?
+  The test the two approaches as I'm not sure which will be more ergonomic longer term. The real 
+  answer might be a combination of the two - a middleware mode that allows pushing an image as well.

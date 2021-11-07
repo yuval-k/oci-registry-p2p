@@ -7,18 +7,16 @@ log:
   fields:
     service: registry
     environment: staging
+
 storage:
-  ipfs:
-    ipfsapiaddress: /ip4/127.0.0.1/tcp/5001
-    writeipnskey: self
-    readonlyipnskeys: "k51qzi5uqu5dlj2qkibv67ep4sdsa73s9asv2g3um5j441i80ks15e1afi7waz"
+  inmemory: {}
 
 middleware:
   repository:
     - name: ipfs
       options:
-        ipfsapiaddress: /ip4/127.0.0.1/tcp/5001
-
+#        ipfsapiaddress: /ip4/127.0.0.1/tcp/5001
+        ipfsapiaddress: /ip4/192.168.1.3/tcp/31341
 http:
   addr: localhost:5000
   net: tcp
