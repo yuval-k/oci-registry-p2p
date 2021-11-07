@@ -14,6 +14,11 @@ Build assets in the dist folder, and check-sum them:
 make images dist/SHA256SUMS.txt
 ```
 
+Publish docker images to ghcr.io
+```
+make push-images
+```
+
 Publish to IPFS and create Release readme
 ```
 make publish-ipfs
