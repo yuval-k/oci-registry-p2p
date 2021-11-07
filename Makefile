@@ -77,7 +77,7 @@ push-images: images
 	$(CONTAINER_RUNTIME) manifest rm $(IMAGE_NAME)
 
 publish-ipfs:
-	CID=$$(ipfs add -Q -r dist); sed -e "s/@CID@/$${CID}/g" -e "s/@TAG@/$(TAG)/g" scripts/README-RELEASE-template.md > README-$(TAG).md
+	CID=$(shell ipfs add -Q -r dist); sed -e "s/@CID@/$${CID}/g" -e "s/@TAG@/$(TAG)/g" scripts/README-RELEASE-template.md > README-$(TAG).md
 # move the readme to dist folder so it's git ignored and our version is not dirty.
 	mv README-$(TAG).md dist/
 
