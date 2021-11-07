@@ -41,9 +41,8 @@ snapshot:
 
 dockers:
 - image_templates:
-    - 'docker.io/uvgroovy/oci-registry-p2p:{{ .Tag }}-amd64'
+    - 'ghcr.io/yuval-k/oci-registry-p2p:{{ .Tag }}-amd64'
   dockerfile: Dockerfile
-  use_buildx: true
   goos: linux
   goarch: amd64
   build_flag_templates:
@@ -57,9 +56,8 @@ dockers:
    - "--platform=linux/amd64"
 
 - image_templates:
-  - 'docker.io/uvgroovy/oci-registry-p2p:{{ .Tag }}-amd64'
+  - 'ghcr.io/yuval-k/oci-registry-p2p:{{ .Tag }}-amd64'
   dockerfile: Dockerfile
-  use_buildx: true
   goos: linux
   goarch: amd64
   build_flag_templates:
@@ -67,13 +65,13 @@ dockers:
    - "--build-arg=ARCH=linux/amd64"
    - "--label=org.opencontainers.image.created={{ .Date }}"
    - "--label=org.opencontainers.image.name={{ .ProjectName }}"
-   - "--label=org.'opencontainers.image.revision={{ .FullCommit }}"
+   - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
    - "--label=org.opencontainers.image.version={{ .Version }}"
    - "--label=org.opencontainers.image.source={{ .GitURL }}"
    - "--platform=linux/amd64"
 
 - image_templates:
-  - 'docker.io/uvgroovy/oci-registry-p2p:{{ .Tag }}-armv7'
+  - 'ghcr.io/yuval-k/oci-registry-p2p:{{ .Tag }}-armv7'
   dockerfile: Dockerfile
   goos: linux
   goarch: arm
@@ -83,13 +81,13 @@ dockers:
    - "--build-arg=ARCH=linux/arm/v7"
    - "--label=org.opencontainers.image.created={{ .Date }}"
    - "--label=org.opencontainers.image.name={{ .ProjectName }}"
-   - "--label=org.'opencontainers.image.revision={{ .FullCommit }}"
+   - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
    - "--label=org.opencontainers.image.version={{ .Version }}"
    - "--label=org.opencontainers.image.source={{ .GitURL }}"
    - "--platform=linux/arm/v7"
 
 - image_templates:
-  - 'docker.io/uvgroovy/oci-registry-p2p:{{ .Tag }}-arm64'
+  - 'ghcr.io/yuval-k/oci-registry-p2p:{{ .Tag }}-arm64'
   dockerfile: Dockerfile
   goos: linux
   goarch: arm64
@@ -98,17 +96,17 @@ dockers:
    - "--build-arg=ARCH=linux/arm64"
    - "--label=org.opencontainers.image.created={{ .Date }}"
    - "--label=org.opencontainers.image.name={{ .ProjectName }}"
-   - "--label=org.'opencontainers.image.revision={{ .FullCommit }}"
+   - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
    - "--label=org.opencontainers.image.version={{ .Version }}"
    - "--label=org.opencontainers.image.source={{ .GitURL }}"
-   - "--platform=linux/arm64"
+   - "--platform=linux/arm64/v8"
 
 docker_manifests:
-- name_template: 'docker.io/uvgroovy/oci-registry-p2p:{{ .Tag }}'
+- name_template: 'ghcr.io/yuval-k/oci-registry-p2p:{{ .Tag }}'
   image_templates:
-    - 'docker.io/uvgroovy/oci-registry-p2p:{{ .Tag }}-amd64'
-    - 'docker.io/uvgroovy/oci-registry-p2p:{{ .Tag }}-armv7'
-    - 'docker.io/uvgroovy/oci-registry-p2p:{{ .Tag }}-arm64'
+    - 'ghcr.io/yuval-k/oci-registry-p2p:{{ .Tag }}-amd64'
+    - 'ghcr.io/yuval-k/oci-registry-p2p:{{ .Tag }}-armv7'
+    - 'ghcr.io/yuval-k/oci-registry-p2p:{{ .Tag }}-arm64'
 
 changelog:
   skip: true

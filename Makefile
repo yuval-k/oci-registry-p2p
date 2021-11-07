@@ -14,6 +14,10 @@ PROJECT_NAME=oci-registry-p2p
 TAG=$(VERSION:v%=%)
 IMAGE_NAME=$(REGISTRY)/$(REPO):$(TAG)
 
+.PHONY: version
+version:
+	@echo $(VERSION)
+
 ./.bin/helm:
 	mkdir -p .bin
 	cd tools && go build -o ../.bin/helm helm.sh/helm/v3/cmd/helm
@@ -32,15 +36,15 @@ dist/amd64/oci-registry-p2p:
 
 dist/arm64/oci-registry-p2p.tar: dist/arm64/oci-registry-p2p
 	$(CONTAINER_RUNTIME) build -f Dockerfile --os linux --arch arm64 --variant v8 -t $(IMAGE_NAME)-arm64 --build-arg ARCH=linux/arm64 -f Dockerfile dist/arm64
-	$(CONTAINER_RUNTIME) save $(IMAGE_NAME)-arm64 $(PUSH_FLAGS) > $@
+	$(CONTAINER_RUNTIME) save $(IMAGE_NAME)-arm64 > $@
 
 dist/armv7/oci-registry-p2p.tar: dist/armv7/oci-registry-p2p
 	$(CONTAINER_RUNTIME) build -f Dockerfile --os linux --arch arm --variant v7 -t $(IMAGE_NAME)-armv7 --build-arg ARCH=linux/arm/v7 -f Dockerfile dist/armv7
-	$(CONTAINER_RUNTIME) save $(IMAGE_NAME)-armv7 $(PUSH_FLAGS) > $@
+	$(CONTAINER_RUNTIME) save $(IMAGE_NAME)-armv7 > $@
 
 dist/amd64/oci-registry-p2p.tar: dist/amd64/oci-registry-p2p
 	$(CONTAINER_RUNTIME) build -f Dockerfile --os linux --arch amd64 -t $(IMAGE_NAME)-amd64 --build-arg ARCH=linux/amd64 -f Dockerfile dist/amd64
-	$(CONTAINER_RUNTIME) save $(IMAGE_NAME)-amd64 $(PUSH_FLAGS) > $@
+	$(CONTAINER_RUNTIME) save $(IMAGE_NAME)-amd64 > $@
 
 install-tools:
 	mkdir -p ./.bin
@@ -56,7 +60,7 @@ helm-package: dist/helm/oci-registry-p2p-$(TAG).tgz
 
 images: dist/arm64/oci-registry-p2p.tar dist/armv7/oci-registry-p2p.tar dist/amd64/oci-registry-p2p.tar
 
-image: images
+push-images: images
 	$(CONTAINER_RUNTIME) manifest rm $(IMAGE_NAME) || exit 0 # cleanup old manifest, if exists
 	$(CONTAINER_RUNTIME) manifest create $(IMAGE_NAME)
 
@@ -73,8 +77,17 @@ image: images
 	$(CONTAINER_RUNTIME) manifest rm $(IMAGE_NAME)
 
 publish-ipfs:
-	$(CONTAINER_RUNTIME) pull $(IMAGE_NAME) $(PUSH_FLAGS)
-	$(CONTAINER_RUNTIME) save $(IMAGE_NAME) | ipfs add -q > dist/dockerimage-ipfs-hash
+	CID=$$(ipfs add -Q -r dist); sed -e "s/@CID@/$${CID}/g" -e "s/@TAG@/$(TAG)/g" scripts/README-RELEASE-template.md > README-$(TAG).md
+# move the readme to dist folder so it's git ignored and our version is not dirty.
+	mv README-$(TAG).md dist/
+
+dist/SHA256SUMS.txt:
+	rm $@ || exit 0
+	cd dist; sha256sum $$(find . -type f) > SHA256SUMS.txt
+
+publish-gh:
+	git push --tags
+	gh create release $(VERSION) -F ./dist/README-$(TAG).md
 
 image-dist:
 	mkdir -p dist
@@ -82,7 +95,7 @@ image-dist:
 #	CGO_ENABLED=0 go run -buildmode=pie -tags containers_image_openpgp github.com/containers/skopeo/cmd/skopeo copy $(COPY_FLAGS) docker://$(IMAGE_NAME) oci:image-test
 #	$(CONTAINER_RUNTIME) save $(IMAGE_NAME) > dist/oci-registry-p2p.tar
 	$(CONTAINER_RUNTIME) pull $(IMAGE_NAME) $(PUSH_FLAGS)
-	$(CONTAINER_RUNTIME) save  $(IMAGE_NAME) $(IMAGE_NAME)-arm64 $(IMAGE_NAME)-armv7 $(IMAGE_NAME)-amd64  > dist/oci-registry-p2p.tar
+	$(CONTAINER_RUNTIME) save $(IMAGE_NAME) $(IMAGE_NAME)-arm64 $(IMAGE_NAME)-armv7 $(IMAGE_NAME)-amd64 > dist/oci-registry-p2p.tar
 
 inmemreg-local:
 	go run . serve scripts/config-inmem.yaml
