@@ -29,7 +29,8 @@ func init() {
 
 func CreateRepositoryMiddleware(ctx context.Context, repository distribution.Repository, options map[string]interface{}) (distribution.Repository, error) {
 
-	location := ipfspath.New(repository.Named().Name())
+	name := repository.Named().Name()
+	location := ipfspath.New("/" + name)
 	err := location.IsValid()
 	if err != nil {
 		// not ipfs, do nothing.
@@ -100,7 +101,7 @@ func (r *ipfsRepository) Blobs(ctx context.Context) distribution.BlobStore {
 }
 
 func (r *ipfsRepository) digestPath(dgst digest.Digest) ipfspath.Path {
-	return ipfspath.Join(r.location, dgst.Algorithm().String(), dgst.Encoded())
+	return ipfspath.Join(r.location, "blobs", dgst.Algorithm().String(), dgst.Encoded())
 }
 
 type tagService struct {
