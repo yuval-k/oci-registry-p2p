@@ -87,7 +87,7 @@ dist/SHA256SUMS.txt:
 
 publish-gh:
 	git push --tags
-	gh create release $(VERSION) -F ./dist/README-$(TAG).md
+	gh release create $(VERSION) -F ./dist/README-$(TAG).md
 
 image-dist:
 	mkdir -p dist
