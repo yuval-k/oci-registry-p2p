@@ -22,6 +22,8 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/oss"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/swift"
+
+	_ "github.com/yuval-k/oci-registry-p2p/registry/middleware"
 	_ "github.com/yuval-k/oci-registry-p2p/registry/storage/driver/ipfs"
 	ourversion "github.com/yuval-k/oci-registry-p2p/version"
 )
