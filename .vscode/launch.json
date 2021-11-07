@@ -12,13 +12,24 @@
             "program": "${workspaceFolder}",
             "env": {},
             "args": ["serve", "config.yaml"],
-             "dlvLoadConfig": {
+            /* 
+            "dlvLoadConfig": {
                  "followPointers": true,
                  "maxVariableRecurse": 1,
                  "maxStringLen": 1000,
                  "maxArrayValues": 64,
                  "maxStructFields": -1
              }
+             */
+        },
+        {
+            "name": "Launch middleware",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}",
+            "env": {},
+            "args": ["serve", "scripts/example-config-middleware.yaml"],
         }
     ]
 }

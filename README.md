@@ -31,6 +31,30 @@ go run . serve scripts/example-config.yaml
 # Wait until the registry initializes (may take a minute), and then run the following in a third terminal:
 docker run --rm localhost:5000/hello@sha256:d6f8f32bc1fc6cd09ecc4634551219d7e941065a1ecc5363b6c1f84d85bc00ad --tls-verify=false
 ```
+# Quick 10 second demo - OCI Image directly from IPFS.
+```bash
+# In the first terminal run ipfs if not running
+ipfs daemon --init
+
+# In a second terminal, run the following:
+cp test/e2e/cert.pem .
+cp test/e2e/key.pem .
+go run . serve scripts/example-config-middleware.yaml
+
+# In a third terminal run:
+# Build an OCI image
+podman pull docker.io/library/alpine:3.10.1
+mkdir images
+podman push docker.io/library/alpine:3.10.1 oci:./images/alpine:3.10.1
+# this will result with a directory named foo-amd4 created with the OCI image format layout
+# add the OCI repository to IPFS. it is important to use CID version 1, as it is case-insensitive.
+CID=$(ipfs add -Q -r --cid-version 1 ./images)
+
+# Now ou can use docker/podman to pull or run the image just added to IPFS!
+podman pull localhost:5000/ipfs/${CID}/alpine:3.10.1 --tls-verify=false
+podman run -ti --rm --tls-verify=false localhost:5000/ipfs/${CID}/alpine:3.10.1 /bin/sh
+```
+
 # Quick 30 second demo.
 This assumes you already have an IPNS node on localhost (adjust config with node address otherwise).
 
