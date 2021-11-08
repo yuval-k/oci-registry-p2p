@@ -1,0 +1,9 @@
+[Unit] 
+Description=OCI P2P Registry Daemon 
+After=network.target
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/oci-registry-p2p serve /etc/oci-registry-p2p/config.yaml
+Restart=on-failure
+[Install]
+WantedBy=default.target

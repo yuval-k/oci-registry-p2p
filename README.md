@@ -174,16 +174,19 @@ TODO
 ## Kubernetes
 
 Install IPFS in your k8s environment. Then, Install this project:
+
 ```shell
 IPFS_ADDR=/dns4/<NAME.NAMESPACE of IPFS service>/tcp/5001
 REGISTRY_HOSTNAME=example.com # change this to the hostname as observed by clients
+TAG=0.2.0
 
 # create a registry key
 ipfs --api=$IPFS_ADDR key gen registry
 
 kubectl create ns registry
-helm --namespace registry upgrade -i registry ./install/helm/oci-registry-p2p --set ipfs.publishIpnsKey=registry --set ipfs.address=$IPFS_ADDR --set image.repository=ghcr.io/yuval-k/oci-p2p-registry --set image.tag=0.2.0 --set registry.http.host=$REGISTRY_HOSTNAME
+helm --namespace registry upgrade -i registry ./install/helm/oci-registry-p2p --set ipfs.publishIpnsKey=registry --set ipfs.address=$IPFS_ADDR --set image.repository=ghcr.io/yuval-k/oci-p2p-registry --set image.tag=$TAG --set registry.http.host=$REGISTRY_HOSTNAME
 ```
+
 # Security
 
 Running binary blobs from internet strangers is generally not a good idea.

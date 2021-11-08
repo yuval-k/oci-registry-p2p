@@ -22,6 +22,11 @@ data:
         writeipnskey: {{ .Values.ipfs.publishIpnsKey | quote  }}
         readonlyipnskeys: {{ .Values.ipfs.readonlyipnskeys | quote }}
 
+    middleware:
+      repository:
+        - name: ipfs
+          options:
+            ipfsapiaddress: {{ .Values.ipfs.address | quote  }}
     http:
       addr: 0.0.0.0:5000
       net: tcp

@@ -11,7 +11,7 @@ make version
 
 Build assets in the dist folder, and check-sum them:
 ```
-make images dist/SHA256SUMS.txt
+make images helm-package dist/SHA256SUMS.txt
 ```
 
 Publish docker images to ghcr.io
