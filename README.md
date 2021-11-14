@@ -22,7 +22,7 @@ cp test/e2e/key.pem .
 go run . serve scripts/example-config.yaml
 
 # Wait until the registry initializes (may take a minute), and then run the following in a third terminal:
-docker run --rm localhost:5000/hello@sha256:d6f8f32bc1fc6cd09ecc4634551219d7e941065a1ecc5363b6c1f84d85bc00ad --tls-verify=false
+docker run --rm localhost:5000/hello@sha256:d6f8f32bc1fc6cd09ecc4634551219d7e941065a1ecc5363b6c1f84d85bc00ad
 ```
 
 # Quick 30 second demo - pushing to MFS/IPNS (storage driver mode).
@@ -38,22 +38,22 @@ go run . serve scripts/example-config.yaml
 ```
 
 And in another terminal, push images to `localhost:5000`:
-```
+```shell
 docker pull docker.io/library/alpine:3.10.1
 docker tag docker.io/library/alpine:3.10.1 localhost:5000/alpine
-docker push localhost:5000/alpine --tls-verify=false
+docker push localhost:5000/alpine
 ```
 
 The example config has a remote registry preconfigured. To pull an image from a remote registry, just do:
-```
+```shell
 docker pull localhost:5000/hello@sha256:d6f8f32bc1fc6cd09ecc4634551219d7e941065a1ecc5363b6c1f84d85bc00ad
 ```
 
 Note: that registry configuration parameters can be also be changed via environment variables. For example:
 
-```
+```shell
 export REGISTRY_STORAGE_IPFS_IPFSAPIADDRESS=/ip4/...
-// run registry
+# run registry...
 ```
 
 See more info [here](https://docs.docker.com/registry/configuration/).

@@ -46,3 +46,5 @@ data:
       tls:
         certificate: /etc/certs/tls.crt
         key: /etc/certs/tls.key
+    proxy:
+      remoteurl: https://registry-1.docker.io
