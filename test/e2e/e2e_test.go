@@ -24,8 +24,9 @@ import (
 )
 
 var (
-	i                = 0
-	ContainerRuntime = "podman"
+	i                 = 0
+	ContainerRuntime  = "podman"
+	AddTlsVerifyFalse = true
 )
 
 //go:embed images
@@ -131,6 +132,9 @@ var _ = Describe("E2e", func() {
 		stopRegistry()
 	})
 	run := func(a string, arg ...string) error {
+		if AddTlsVerifyFalse {
+			arg = append(arg, "--tls-verify=false")
+		}
 
 		cmd := exec.Command(a, arg...)
 		cmd.Stdout = GinkgoWriter
@@ -139,9 +143,9 @@ var _ = Describe("E2e", func() {
 	}
 
 	It("should push and pull image", func() {
-		err := run(ContainerRuntime, "push", "localhost:5000/alpine", "--tls-verify=false")
+		err := run(ContainerRuntime, "push", "localhost:5000/alpine")
 		Expect(err).NotTo(HaveOccurred())
-		err = run(ContainerRuntime, "pull", "localhost:5000/alpine", "--tls-verify=false")
+		err = run(ContainerRuntime, "pull", "localhost:5000/alpine")
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -152,16 +156,16 @@ var _ = Describe("E2e", func() {
 		})
 
 		It("should push and pull image", func() {
-			err := run(ContainerRuntime, "push", "localhost:5000/alpine", "--tls-verify=false")
+			err := run(ContainerRuntime, "push", "localhost:5000/alpine")
 			Expect(err).NotTo(HaveOccurred())
-			err = run(ContainerRuntime, "pull", "localhost:5000/alpine", "--tls-verify=false")
+			err = run(ContainerRuntime, "pull", "localhost:5000/alpine")
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
 	Context("publish survies restart", func() {
 		It("should push and pull image", func() {
-			err := run(ContainerRuntime, "push", "localhost:5000/alpine", "--tls-verify=false")
+			err := run(ContainerRuntime, "push", "localhost:5000/alpine")
 			Expect(err).NotTo(HaveOccurred())
 
 			// give time for the registry to flush data and save the new root
@@ -170,14 +174,14 @@ var _ = Describe("E2e", func() {
 			By("restarting the registry")
 			stopRegistry()
 			runRegistry()
-			err = run(ContainerRuntime, "pull", "localhost:5000/alpine", "--tls-verify=false")
+			err = run(ContainerRuntime, "pull", "localhost:5000/alpine")
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
 	Context("read only", func() {
 		It("should pull from read only repo", func() {
-			err := run(ContainerRuntime, "push", "localhost:5000/alpine", "--tls-verify=false")
+			err := run(ContainerRuntime, "push", "localhost:5000/alpine")
 			Expect(err).NotTo(HaveOccurred())
 
 			// give time for the registry to flush data and save the new root
@@ -190,7 +194,7 @@ var _ = Describe("E2e", func() {
 			ipnsKey = ""
 
 			runRegistry()
-			err = run(ContainerRuntime, "pull", "localhost:5000/alpine", "--tls-verify=false")
+			err = run(ContainerRuntime, "pull", "localhost:5000/alpine")
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
@@ -202,7 +206,7 @@ var _ = Describe("E2e", func() {
 			Expect(err).NotTo(HaveOccurred())
 			// pull it
 			img := "localhost:5000" + resolved.String() + "/hello:v1"
-			err = run(ContainerRuntime, "pull", img, "--tls-verify=false")
+			err = run(ContainerRuntime, "pull", img)
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
@@ -220,8 +224,16 @@ var _ = Describe("E2e", func() {
 
 var _ = BeforeSuite(func() {
 
+	useDocker := false
+	// prefer podman, unless it is missing or docker explicitly requested.
 	if os.Getenv("USE_DOCKER") == "1" {
+		useDocker = true
+	} else if _, err := exec.LookPath("podman"); err != nil {
+		useDocker = true
+	}
+	if useDocker {
 		ContainerRuntime = "docker"
+		AddTlsVerifyFalse = false
 	}
 
 	cmd := exec.Command(ContainerRuntime, "pull", "docker.io/library/alpine:3.10.1")

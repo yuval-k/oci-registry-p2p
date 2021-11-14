@@ -246,7 +246,7 @@ Combination of above cases, where you can push to your own registry, while also 
 
 # Building / Testing
 
-E2E Testing depends on `podman` binary. To run tests:
+E2E Testing depends on `docker` or `podman` binary available. To run tests:
 
 ```shell
 go test ./...
