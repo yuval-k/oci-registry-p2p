@@ -1,0 +1,27 @@
+name: pull_request
+
+on:
+  push:
+    branches:
+    - 'master'
+  pull_request: {}
+
+jobs:
+  build:
+    name: build-works
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Go 1.16
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
+    - uses: actions/cache@v2
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    - name: Acceptance test
+      run: |
+        go test ./...-ginkgo.v
