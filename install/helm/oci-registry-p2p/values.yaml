@@ -8,7 +8,6 @@ certificate:
 
 deployment:
   replicaCount: 1
-  statefulSet: false
 
 ipfs:
   address: ""
@@ -16,7 +15,7 @@ ipfs:
   readonlyipnskeys: ""
 
 image:
-  repository: oci-registry-p2p
+  repository: ghcr.io/yuval-k/oci-p2p-registry
   pullPolicy: IfNotPresent
   tag: ""
 

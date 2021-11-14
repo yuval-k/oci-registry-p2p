@@ -14,7 +14,7 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/middleware/redirect"
 
-	_ "github.com/yuval-k/oci-registry-p2p/registry/middleware"
+	_ "github.com/yuval-k/oci-registry-p2p/registry/middleware/ipfs"
 	_ "github.com/yuval-k/oci-registry-p2p/registry/storage/driver/ipfs"
 	ourversion "github.com/yuval-k/oci-registry-p2p/version"
 )

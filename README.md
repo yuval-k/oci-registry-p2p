@@ -79,7 +79,7 @@ cp test/e2e/key.pem .
 go run . serve scripts/example-config.yaml
 
 # In a third terminal:
-# This is the CID of an images folder i pushed
+# This is the CID of an images folder I pushed
 CID=bafybeielgvrvxuraaa6s36ww575ogm2jc6haclf7sghyf7d3rtiodisbrq
 # Now you can use docker/podman to pull or run the image just added to IPFS!
 # note that you can also use /ipns names
@@ -166,10 +166,30 @@ See more details in [docs/middleware.md](docs/middleware.md).
 # Installation
 TODO
 ## Systemd
-TODO
+
+This can be useful if you have your ipfs node on systemd as well.
+
+```
+# note - copy the right platform from dist folder
+cp oci-registry-p2p /usr/local/bin/oci-registry-p2p
+mkdir /etc/oci-registry-p2p/
+cp scripts/example-config.yaml /etc/oci-registry-p2p/config.yaml
+# create some certs
+openssl req -new -newkey rsa:2048 -x509 -sha256 \
+        -days 3650 -nodes -out cert.pem -keyout key.pem \
+        -subj "/CN=ipfs-test-ca.example.com" \
+        -addext "extendedKeyUsage = clientAuth, serverAuth"
+cp key.pem /etc/oci-registry-p2p/
+cp cert.pem /etc/oci-registry-p2p/
+
+cp install/oci-registry-p2p.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable oci-registry-p2p
+systemctl start oci-registry-p2p
+```
 
 ## Docker/Podman
-TODO
+TODO: docker run -v config.yaml:...:ro -d ...
 
 ## Kubernetes
 
@@ -223,3 +243,11 @@ Combination of above cases, where you can push to your own registry, while also 
 - Why have 2 independent components (storage driver and middleware)?
   The test the two approaches as I'm not sure which will be more ergonomic longer term. The real 
   answer might be a combination of the two - a middleware mode that allows pushing an image as well.
+
+# Building / Testing
+
+E2E Testing depends on `podman` binary. To run tests:
+
+```shell
+go test ./...
+```

@@ -14,14 +14,7 @@
           "type": "boolean"
         },
         "createCertificate": {
-          "type": "boolean"
-        }
-      }
-    },
-    "certificate": {
-      "type": "object",
-      "properties": {
-        "enabled": {
+          "description": "Create a cert-manager.io/v1 certificate object",
           "type": "boolean"
         }
       }
@@ -29,14 +22,8 @@
     "deployment": {
       "type": "object",
       "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
         "replicaCount": {
           "type": "integer"
-        },
-        "statefulSet":{
-          "type":"boolean"
         }
       }
     },
@@ -100,14 +87,12 @@
     "port": {
       "description": "Port",
       "minimum": 0,
+      "maximum": 65535,
       "type": "integer"
     },
     "serviceAccount": {
       "description": "Service account properties",
       "properties": {
-        "create": {
-          "type": "boolean"
-        },
         "name": {
           "type": "string"
         },

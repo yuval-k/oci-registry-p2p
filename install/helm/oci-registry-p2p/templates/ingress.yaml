@@ -9,7 +9,6 @@ apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
   name: {{ $fullName }}
-  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "oci-registry-p2p.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}

@@ -1,4 +1,4 @@
-package middleware
+package ipfs
 
 import (
 	"bytes"
@@ -23,6 +23,11 @@ import (
 	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
+var (
+	// allow overriding for tests
+	OverrideableOpenIpfs = openIpfs
+)
+
 func init() {
 	middleware.Register("ipfs", CreateRepositoryMiddleware)
 }
@@ -42,15 +47,18 @@ func CreateRepositoryMiddleware(ctx context.Context, repository distribution.Rep
 		ipfsaddress = "/ip4/127.0.0.1/tcp/5001"
 	}
 
-	addr, err := ma.NewMultiaddr(fmt.Sprint(ipfsaddress))
-	if err != nil {
-		return nil, err
-	}
-	api, err := httpapi.NewApi(addr)
-	if err != nil {
-		return nil, err
-	}
+	api, err := OverrideableOpenIpfs(fmt.Sprint(ipfsaddress))
+
 	return newIpfsRepository(api, location, repository.Named()), nil
+}
+
+func openIpfs(ipfsaddress string) (coreapi.CoreAPI, error) {
+
+	addr, err := ma.NewMultiaddr(ipfsaddress)
+	if err != nil {
+		return nil, err
+	}
+	return httpapi.NewApi(addr)
 }
 
 var _ distribution.Repository = &ipfsRepository{}

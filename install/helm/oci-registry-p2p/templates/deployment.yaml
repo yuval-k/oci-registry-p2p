@@ -2,13 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "oci-registry-p2p.fullname" . }}
-  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "oci-registry-p2p.labels" . | nindent 4 }}
 spec:
-{{- if .Values.deployment.statefulSet }}
-  serviceName: 
-{{- end }}
 {{- if .Values.deployment.replicaCount }}
   replicas: {{ .Values.deployment.replicaCount }}
 {{- end }}
@@ -29,6 +25,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
     {{- end }}
+      automountServiceAccountToken: false
       serviceAccountName: {{ include "oci-registry-p2p.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
@@ -63,10 +60,6 @@ spec:
             name: tls
             readOnly: true
 {{- end}}
-{{- if .Values.deployment.statefulSet }}
-          - mountPath: /cache
-            name: cache
-{{- end }}
         resources:
           {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
@@ -92,15 +85,4 @@ spec:
         - name: tls
           secret:
             secretName: {{ .Values.tls.secretName | default (include "oci-registry-p2p.fullname" .) }}
-{{- end }}
-{{- if .Values.deployment.statefulSet }}
-  volumeClaimTemplates:
-  - metadata:
-      name: cache
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      storageClassName: "my-storage-class"
-      resources:
-        requests:
-          storage: 1Gi
 {{- end }}

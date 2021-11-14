@@ -52,9 +52,14 @@ install-tools:
 	mv linux-amd64/helm ./.bin/helm
 
 dist/helm/oci-registry-p2p-$(TAG).tgz:
+# provide none empty value for ipfs.address so that lint passes
 	helm lint --set ipfs.address=a install/helm/oci-registry-p2p
 	mkdir -p dist/helm
 	helm package install/helm/oci-registry-p2p --destination dist/helm/ --version $(TAG) --app-version $(TAG)
+
+dist/k8s/manifest.yaml:
+	mkdir -p dist/k8s
+	helm template install/helm/oci-registry-p2p --skip-tests --set tls.createSelfSigned=false --set ipfs.address=/dns4/ipfs.ipfs/tcp/5001 --name-template=release --set image.tag=$(TAG) > $@
 
 helm-package: dist/helm/oci-registry-p2p-$(TAG).tgz
 
