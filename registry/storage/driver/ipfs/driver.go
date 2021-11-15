@@ -145,7 +145,7 @@ func Wrap(d *IpfsDriver) storagedriver.StorageDriver {
 func resolveKeyName(keys []coreapi.Key, ipnsKey string) string {
 	for _, key := range keys {
 		if key.Name() == ipnsKey {
-			return key.Path().String()
+			return key.ID().String()
 		}
 	}
 	return ipnsKey
@@ -378,9 +378,10 @@ func (s *IpfsDriver) newRoot(ctx context.Context, c cid.Cid) error {
 	l := logger(ctx)
 	if err != nil {
 		l.WithError(err).Error("failed to publish ipns entry")
+		return err
 	}
 	dcontext.GetLoggerWithField(ctx, "ipns-value", path.Cid().String()).Debug("published ipns entry")
-	return err
+	return nil
 }
 
 // Name returns the human-readable "name" of the driver, useful in error

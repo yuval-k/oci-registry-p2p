@@ -149,7 +149,7 @@ var _ = Describe("E2e", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	XContext("ipns self", func() {
+	Context("ipns self", func() {
 		// Skipping this test, as publishing to the key defined by "self" seems to fail. I think this is a mock/test bug.
 		BeforeEach(func() {
 			ipnsKey = "self"
