@@ -207,10 +207,6 @@ func NewDriverFromAPI(ctx context.Context, api coreapi.CoreAPI, ipnsKeyWrite str
 
 	if ipnsKeyWrite != "" {
 		ipnsKeyWrite = resolveKeyName(driver.keys, ipnsKeyWrite)
-		err := ipfspath.New(ipnsKeyWrite).IsValid()
-		if err != nil {
-			return nil, fmt.Errorf("invalid ipns key: %w", err)
-		}
 
 		driver.writeIpnsKey = ipnsKeyWrite
 		nd, err := getProtoNodeForKey(ctx, api, ipnsKeyWrite)
@@ -228,10 +224,6 @@ func NewDriverFromAPI(ctx context.Context, api coreapi.CoreAPI, ipnsKeyWrite str
 
 	for _, ipnsKey := range ipnsKeyReadOnly {
 		ipnsKey = resolveKeyName(driver.keys, ipnsKey)
-		err := ipfspath.New(ipnsKey).IsValid()
-		if err != nil {
-			return nil, fmt.Errorf("invalid ipns key: %w", err)
-		}
 		rrr, err := driver.newRefreshableReadonlyRoot(ipnsKey)
 		if err != nil {
 			return nil, err
