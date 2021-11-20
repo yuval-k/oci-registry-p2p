@@ -24,4 +24,4 @@ jobs:
           ${{ runner.os }}-go-
     - name: Acceptance test
       run: |
-        go test ./...-ginkgo.v
+        go test ./... -ginkgo.v
