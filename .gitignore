@@ -1,6 +1,6 @@
 dist/
-oci-registry-p2p
 !/**/oci-registry-p2p
+oci-registry-p2p
 
 # Only allow certs in test dir, so it's clear they shouldn't be used/trusted.
 cert.pem
