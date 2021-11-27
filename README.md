@@ -1,10 +1,16 @@
-A IPFS backed storage implementation for docker/OCI registry. This Project brings together cloud-native and peer-to-peer by enabling you
-# What is this?
-to have p2p registries - an ability to fetch remote images without being directly connected to the remote registry the image was pushed to.
+A IPFS backed storage implementation for docker/OCI registry. This Project brings together cloud-native and peer-to-peer by enabling you pull images directly from IPFS in way that's supported by existing container tooling. In addition you can also push images and store them on IPFS (though these two modes work differently, see more below).
+
 # What is this good for?
 
 P2P OCI registries give you the ability to pull container images from IPFS, without being directly connected
 to a different registry.
+
+This is achived by implementing two components (each can be used on its own):
+1. A storage driver. This allows you to use IPFS as a storage backend, and abstracts IPFS from the user of the registry. Two registries can share the same storage (as it is published on IPNS) and thus share content.
+1. A repository middleware. This allows you to access OCI layout images that are directly on IPFS using the registry.
+
+See below for demos and more detailed explanation.
+
 
 # Prerequisites:
 
@@ -44,7 +50,7 @@ docker tag docker.io/library/alpine:3.10.1 localhost:5000/alpine
 docker push localhost:5000/alpine
 ```
 
-The example config has a remote registry preconfigured. To pull an image from a remote registry, just do:
+The example config has a remote registry pre-configured. To pull an image from a remote registry, just do:
 ```shell
 docker pull localhost:5000/hello@sha256:d6f8f32bc1fc6cd09ecc4634551219d7e941065a1ecc5363b6c1f84d85bc00ad
 ```
@@ -59,13 +65,16 @@ export REGISTRY_STORAGE_IPFS_IPFSAPIADDRESS=/ip4/...
 See more info [here](https://docs.docker.com/registry/configuration/).
 
 Note: Pushing It may take a minute, as publishing to IPNS takes time. In the future we can trade off so of that time with less consistency. Pulling should be fast.
+
+Note: You can see the published IPFS root in the logs, feel free to use "ipfs ls" on it if you want to take a deeper look.
+
 # Quick 20 second demo - Pulling OCI Image directly from IPFS (middleware mode).
 With this mode, there is *no need* for any IPNS configuration for the registry.
 What we do instead, is place the container directly on an IPFS node in the OCI image format,
 and use the repository to pull it.
 
 This mode uses a registry middleware instead of a storage driver, and is more likely to be future proof.
-Currently, pushing through the repository is not supported. See the next demo below that uses `podman`
+Currently, pushing through the repository is not supported. See the next demo below that uses `docker`
 to pull a container from docker hub and "push" it to IPFS.
 
 
@@ -84,16 +93,18 @@ CID=bafybeielgvrvxuraaa6s36ww575ogm2jc6haclf7sghyf7d3rtiodisbrq
 # Now you can use docker/podman to pull or run the image just added to IPFS!
 # note that you can also use /ipns names
 # Try the following commands:
-podman pull localhost:5000/ipfs/${CID}/alpine:3.10.1 --tls-verify=false
-podman run -ti --rm --tls-verify=false localhost:5000/ipfs/${CID}/alpine:3.10.1 /bin/sh
+# if you use podman, add "--tls-verify=false" to command below
+docker pull localhost:5000/ipfs/${CID}/alpine:3.10.1
+docker run -ti --rm localhost:5000/ipfs/${CID}/alpine:3.10.1 /bin/sh
 ```
 
 Note: A nice property of IPFS is that it will automatically de-duplicate the various layers.
 This means that if you push the same layer from multiple images, the layer will not use twice the storage.
 # Quick 30 second demo - Pulling OCI Image directly from IPFS (middleware mode).
 Following up from the demo above, we'll show how to get an OCI image to IPFS.
-As currently, pushing through the repository is not supported. With this example we will use  `podman` to pull a container from docker hub and "push" it to an OCI folder. We will then
-add that folder to IPFS.
+As currently, pushing through the repository is not supported. With this example we will use `podman` to pull a container from docker hub and "push" it to an OCI folder. We will then add that folder to IPFS.
+
+Note: We use podman as it can create an OCI folder structure of us.
 
 ```bash
 # In the first terminal run ipfs if not running
@@ -121,11 +132,12 @@ CID=$(ipfs add -Q -r --cid-version 1 ./images)
 # note that you can also use /ipns names
 # Try the following commands:
 podman pull localhost:5000/ipfs/${CID}/alpine:3.10.1 --tls-verify=false
-podman run -ti --rm --tls-verify=false localhost:5000/ipfs/${CID}/alpine:3.10.1 /bin/sh
+podman run -ti --rm localhost:5000/ipfs/${CID}/alpine:3.10.1 /bin/sh
 ```
 
 Note: A nice property of IPFS is that it will automatically de-duplicate the various layers.
 This means that if you push the same layer from multiple images, the layer will not use twice the storage.
+
 # Configuration
 
 - `ipfsapiaddress` - Address of ipfs node api, in multi-address format. defaults to: "/ip4/127.0.0.1/tcp/5001"
@@ -249,4 +261,10 @@ E2E Testing depends on `docker` or `podman` binary available. To run tests:
 
 ```shell
 go test ./...
+```
+
+Building is straight forward as well:
+
+```
+go build .
 ```
