@@ -314,7 +314,7 @@ func (s *refreshableReadonlyRoot) Root() *mfs.Root {
 }
 
 func (s *refreshableReadonlyRoot) refreshRoot() {
-	l := logger(s.ctx)
+	l := dcontext.GetLoggerWithField(s.ctx, "ipnsKey", s.ipnsKey)
 	l.Debug("refreshRoot")
 	var resolved ipfspath.Resolved
 	path, err := s.api.Name().Resolve(s.ctx, s.ipnsKey)
@@ -326,6 +326,10 @@ func (s *refreshableReadonlyRoot) refreshRoot() {
 		}
 	}
 
+	if resolved == nil {
+		l.Debug("refreshRoot: resolved is nil")
+		return
+	}
 	dag := s.api.Dag()
 
 	pbnd, err := s.getNodeFromCid(resolved.Cid())
