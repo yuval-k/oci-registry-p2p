@@ -164,7 +164,9 @@ The advantage of this mode that no additional address configuration is needed. I
 
 See more details in [docs/middleware.md](docs/middleware.md).
 # Installation
-TODO
+
+Ways to install this project.
+
 ## Systemd
 
 This can be useful if you have your ipfs node on systemd as well.
@@ -187,9 +189,6 @@ systemctl daemon-reload
 systemctl enable oci-registry-p2p
 systemctl start oci-registry-p2p
 ```
-
-## Docker/Podman
-TODO: docker run -v config.yaml:...:ro -d ...
 
 ## Kubernetes
 

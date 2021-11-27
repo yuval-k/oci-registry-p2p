@@ -213,13 +213,20 @@ var _ = Describe("E2e", func() {
 
 	Context("systemd install test", func() {
 		It("should install and run on systemd", func() {
+
+			if ContainerRuntime != "podman" {
+				Skip("only podman is supported for systemd install test")
+			}
+
+			// this test is way easier in the shell, so shell out
+			cmd := exec.Command("./testsystemd.sh")
+			cmd.Stdout = GinkgoWriter
+			cmd.Stderr = GinkgoWriter
+			err := cmd.Run()
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
-	Context("k8s install test", func() {
-		It("should install and run on systemd", func() {
-		})
-	})
 })
 
 var _ = BeforeSuite(func() {
