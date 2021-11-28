@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -e
+set -x
 
 PROJ_DIR=$(dirname $(go env GOMOD))
 go build -o ${PROJ_DIR}/oci-registry-p2p ${PROJ_DIR}
