@@ -20,6 +20,7 @@ CID=$(podman run -d -v ${PROJ_DIR}/oci-registry-p2p:/usr/local/bin/oci-registry-
 trap "podman rm -f $CID" EXIT
 echo "Pre-exec Logs:"
 podman logs $CID
+podman inspect $CID
 
 podman exec $CID /bin/sh -c "systemctl daemon-reload && systemctl enable oci-registry-p2p && systemctl start oci-registry-p2p"
 
