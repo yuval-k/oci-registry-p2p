@@ -1,5 +1,10 @@
 To release, do:
 
+start clean:
+```
+make clean
+```
+
 run tests:
 ```
 RUN_SYSTEMD_TEST=true ginkgo -r

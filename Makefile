@@ -126,7 +126,11 @@ push:
 	$(CONTAINER_RUNTIME) push $(REGISTRY)/$(REPO)@$(shell $(CONTAINER_RUNTIME) image inspect $(IMAGE_NAME)-amd64 -f '{{.Digest}}') $(PUSH_FLAGS)
 	$(CONTAINER_RUNTIME) manifest push $(IMAGE_NAME) docker://$(IMAGE_NAME) $(PUSH_FLAGS)
 
+.PHONY: clean
 clean:
+	rm -rf ./dist/
+.PHONY: clean-images
+clean-images:
 	$(CONTAINER_RUNTIME) rmi $(IMAGE_NAME)
 	$(CONTAINER_RUNTIME) rmi $(IMAGE_NAME)-arm64
 	$(CONTAINER_RUNTIME) rmi $(IMAGE_NAME)-amd64
