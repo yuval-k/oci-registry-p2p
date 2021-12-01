@@ -214,7 +214,7 @@ var _ = Describe("E2e", func() {
 	Context("systemd install test", func() {
 		It("should install and run on systemd", func() {
 
-			if ContainerRuntime != "podman" {
+			if ContainerRuntime != "podman" || os.Getenv("RUN_SYSTEMD_TEST") != "true" {
 				Skip("only podman is supported for systemd install test")
 			}
 

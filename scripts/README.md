@@ -1,4 +1,10 @@
 To release, do:
+
+run tests:
+```
+RUN_SYSTEMD_TEST=true ginkgo -r
+```
+
 ```
 git tag v<NEXT VERSION HERE>
 ```
