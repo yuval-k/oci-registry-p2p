@@ -13,6 +13,7 @@ VERSION=$(shell git describe --tags --always --dirty)
 PROJECT_NAME=oci-registry-p2p
 TAG=$(VERSION:v%=%)
 IMAGE_NAME=$(REGISTRY)/$(REPO):$(TAG)
+IPFS_API=$(shell ipfs config Addresses.API)
 
 .PHONY: version
 version:
@@ -82,7 +83,7 @@ push-images: images
 	$(CONTAINER_RUNTIME) manifest rm $(IMAGE_NAME)
 
 publish-ipfs:
-	CID=$(shell ipfs add -Q -r dist); sed -e "s/@CID@/$${CID}/g" -e "s/@TAG@/$(TAG)/g" scripts/README-RELEASE-template.md > README-$(TAG).md
+	CID=$(shell ipfs --api=$(IPFS_API) add -Q -r dist); sed -e "s/@CID@/$${CID}/g" -e "s/@TAG@/$(TAG)/g" scripts/README-RELEASE-template.md > README-$(TAG).md
 # move the readme to dist folder so it's git ignored and our version is not dirty.
 	mv README-$(TAG).md dist/
 

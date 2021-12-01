@@ -29,6 +29,10 @@ Publish to IPFS and create Release readme
 ```
 make publish-ipfs
 ```
+Or, if you ipfs is on another node, use this command (replace IP and PORT):
+```
+make publish-ipfs IPFS_API=/ip4/<IP>/tcp/<PORT>
+```
 
 Publish to Github
 ```
