@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/distribution/distribution/v3 v3.0.0-20211101142838-6248a88d03ba
+	github.com/ethereum/go-ethereum v1.10.4 // indirect
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-datastore v0.4.6
 	github.com/ipfs/go-filestore v0.0.3
@@ -25,4 +26,6 @@ require (
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.2
 	github.com/sirupsen/logrus v1.8.1
+	github.com/wealdtech/go-ens/v3 v3.5.1 // indirect
+	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 )

@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
 	"github.com/distribution/distribution/v3/reference"
 	middleware "github.com/distribution/distribution/v3/registry/middleware/repository"
+	"github.com/ethereum/go-ethereum/ethclient"
 	files "github.com/ipfs/go-ipfs-files"
 	httpapi "github.com/ipfs/go-ipfs-http-client"
 	coreapi "github.com/ipfs/interface-go-ipfs-core"
@@ -28,28 +30,76 @@ var (
 	OverrideableOpenIpfs = openIpfs
 )
 
+type Options struct {
+	EtherNodeUrl   string
+	IPFSApiAddress string
+}
+
 func init() {
 	middleware.Register("ipfs", CreateRepositoryMiddleware)
 }
 
+func doIpfs(location ipfspath.Path, repository distribution.Repository, options Options) (distribution.Repository, error) {
+	api, err := OverrideableOpenIpfs(fmt.Sprint(options.IPFSApiAddress))
+	if err != nil {
+		return nil, err
+	}
+	return newIpfsRepository(api, location, repository.Named()), nil
+}
+
+func ResolveRepo(ctx context.Context, ref reference.Named, opts Options) (ipfspath.Path, error) {
+	// either name is a valid ipfs hash
+	// or we have an ether node, and the first component ends with .eth
+
+	name := ref.Name()
+	location := ipfspath.New("/" + name)
+	if location.IsValid() == nil {
+		return location, nil
+	}
+
+	if opts.EtherNodeUrl != "" {
+		parts := strings.Split(name, "/")
+		if strings.HasSuffix(parts[0], ".eth") {
+			client, err := ethclient.DialContext(ctx, opts.EtherNodeUrl)
+			if err != nil {
+				return nil, err
+			}
+			loc, err := resolveEns(client, name)
+			if err != nil {
+				return nil, err
+			}
+			if len(parts) > 1 {
+				loc = ipfspath.Join(loc, parts[1:]...)
+			}
+			return loc, nil
+		}
+	}
+	return nil, nil
+
+}
+
 func CreateRepositoryMiddleware(ctx context.Context, repository distribution.Repository, options map[string]interface{}) (distribution.Repository, error) {
 
-	name := repository.Named().Name()
-	location := ipfspath.New("/" + name)
-	err := location.IsValid()
+	var opts Options
+	if options["ethnodeurl"] != nil {
+		opts.EtherNodeUrl = fmt.Sprint(options["ethnodeurl"])
+	}
+	if ipfsaddress, ok := options["ipfsapiaddress"]; ok {
+		opts.IPFSApiAddress = fmt.Sprint(ipfsaddress)
+	} else {
+		opts.IPFSApiAddress = "/ip4/127.0.0.1/tcp/5001"
+	}
+
+	location, err := ResolveRepo(ctx, repository.Named(), opts)
+
 	if err != nil {
-		// not ipfs, do nothing.
+		return nil, err
+	}
+	if location == nil {
 		return repository, nil
 	}
 
-	ipfsaddress, ok := options["ipfsapiaddress"]
-	if !ok || fmt.Sprint(ipfsaddress) == "" {
-		ipfsaddress = "/ip4/127.0.0.1/tcp/5001"
-	}
-
-	api, err := OverrideableOpenIpfs(fmt.Sprint(ipfsaddress))
-
-	return newIpfsRepository(api, location, repository.Named()), nil
+	return doIpfs(location, repository, opts)
 }
 
 func openIpfs(ipfsaddress string) (coreapi.CoreAPI, error) {
