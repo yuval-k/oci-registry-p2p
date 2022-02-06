@@ -4,8 +4,9 @@ metadata:
   name: {{ include "oci-registry-p2p.fullname" . }}
   labels:
     {{- include "oci-registry-p2p.labels" . | nindent 4 }}
-{{- with .Values.service.annotations }}
-{{ toYaml . | indent 4 }}
+{{- if .Values.service.annotations }}
+  annotations:
+    {{- toYaml .Values.service.annotations | nindent 4 }}
 {{- end }}
 spec:
   type: {{ .Values.service.type }}

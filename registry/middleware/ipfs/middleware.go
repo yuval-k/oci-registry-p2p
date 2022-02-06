@@ -361,7 +361,11 @@ func (t *tagService) Get(ctx context.Context, tag string) (distribution.Descript
 			continue
 		}
 		if manifest.Annotations != nil {
-			if tag == manifest.Annotations[imgspecv1.AnnotationRefName] {
+			// when podman exports the manifest, it only writes the tag in the AnnotationRefName.
+			// in theory this should contain the full reference. when i see another tool
+			// that does this, i will update this code to use case.
+			refName := manifest.Annotations[imgspecv1.AnnotationRefName]
+			if tag == refName {
 				ret.Annotations = manifest.Annotations
 				ret.Digest = manifest.Digest
 				ret.MediaType = manifest.MediaType
