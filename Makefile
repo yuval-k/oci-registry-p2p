@@ -25,15 +25,15 @@ version:
 
 dist/arm64/oci-registry-p2p:
 	mkdir -p dist/arm64
-	GOOS=linux GOARCH=arm64 go build -o $@ .
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $@ .
 
 dist/armv7/oci-registry-p2p:
 	mkdir -p dist/armv7
-	GGOOS=linux GOARCH=arm GOARM=7 go build -o $@ .
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -o $@ .
 
 dist/amd64/oci-registry-p2p:
 	mkdir -p dist/amd64
-	GOOS=linux GOARCH=amd64 go build -o $@ .
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $@ .
 
 dist/arm64/oci-registry-p2p.tar: dist/arm64/oci-registry-p2p
 	$(CONTAINER_RUNTIME) build -f Dockerfile --os linux --arch arm64 --variant v8 -t $(IMAGE_NAME)-arm64 --build-arg ARCH=linux/arm64 -f Dockerfile dist/arm64
