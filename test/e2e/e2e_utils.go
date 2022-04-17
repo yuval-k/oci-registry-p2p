@@ -22,9 +22,9 @@ import (
 	"github.com/ipfs/go-datastore"
 	syncds "github.com/ipfs/go-datastore/sync"
 	"github.com/ipfs/go-filestore"
-	config "github.com/ipfs/go-ipfs-config"
 	files "github.com/ipfs/go-ipfs-files"
 	keystore "github.com/ipfs/go-ipfs-keystore"
+	config "github.com/ipfs/go-ipfs/config"
 	"github.com/ipfs/go-ipfs/core"
 	"github.com/ipfs/go-ipfs/core/bootstrap"
 	"github.com/ipfs/go-ipfs/core/coreapi"
@@ -196,7 +196,7 @@ func MakeAPISwarm(ctx context.Context) ([]coreiface.CoreAPI, func(), error) {
 	// note that for ipns publish to work, we need more than one node.
 	n := 5
 	fullIdentity := true
-	mn := mocknet.New(ctx)
+	mn := mocknet.New()
 
 	nodes := make([]*core.IpfsNode, n)
 	apis := make([]coreiface.CoreAPI, n)
