@@ -192,6 +192,81 @@ func getProtoNodeForKey(ctx context.Context, api coreapi.CoreAPI, ipnsKey string
 	}
 }
 
+/*
+
+func getProtoNodeForKey(ctx context.Context, api coreapi.CoreAPI, ipnsKey string) (*merkledag.ProtoNode, error) {
+	var resolved ipfspath.Resolved
+	path, err := api.Name().Resolve(ctx, ipnsKey, options.Name.ResolveOption(ropts.DhtTimeout(time.Minute)))
+	if err == nil {
+		resolved, err = api.ResolvePath(ctx, path)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	dag := api.Dag()
+	switch {
+	case err == nil && resolved == nil:
+		l := dcontext.GetLoggerWithField(ctx, "resolved", resolved)
+		l.Debug("resolving initial ipns root failed or missing entry")
+		nd := unixfs.EmptyDirNode()
+		err := dag.Add(ctx, nd)
+		if err != nil {
+			return nil, fmt.Errorf("failure writing to dagstore: %s", err)
+		}
+		return nd, nil
+	case err == nil:
+		c := resolved.Cid()
+		l := dcontext.GetLoggerWithField(ctx, "ipns-value", c.String())
+		l.Debug("resolving initial ipns root entry")
+		rnd, err := dag.Get(ctx, c)
+		if err != nil {
+			return nil, fmt.Errorf("error loading filesroot from DAG: %s", err)
+		}
+		l.Debug("resolved node from initial ipns root entry")
+
+		nd, ok := rnd.(*merkledag.ProtoNode)
+		if !ok {
+			return nil, merkledag.ErrNotProtobuf
+		}
+		return nd, nil
+	default:
+		l := dcontext.GetLogger(ctx).WithError(err)
+		if err == coreapi.ErrResolveFailed {
+			l.Warn("error resolving node for ipns root entry - resolution failed")
+		} else {
+			l.Debug("error resolving node for ipns root entry")
+		}
+		return nil, err
+	}
+}
+*/
+
+func InitKey(ctx context.Context, api coreapi.CoreAPI, ipnsKeyWrite string) (err error) {
+	var resolved ipfspath.Resolved
+	path, err := api.Name().Resolve(ctx, ipnsKeyWrite)
+	if err == nil {
+		resolved, err = api.ResolvePath(ctx, path)
+		if err != nil {
+			return err
+		}
+	}
+
+	dag := api.Dag()
+	if err == coreapi.ErrResolveFailed || resolved == nil {
+		l := dcontext.GetLoggerWithField(ctx, "resolved", resolved).WithError(err)
+		l.Debug("resolving initial ipns root failed or missing entry")
+		nd := unixfs.EmptyDirNode()
+		err := dag.Add(ctx, nd)
+		if err != nil {
+			return fmt.Errorf("failure writing to dagstore: %s", err)
+		}
+		return saveNewRoot(ctx, api, ipnsKeyWrite, nd.Cid())
+	}
+
+	return err
+}
+
 func NewDriverFromAPI(ctx context.Context, api coreapi.CoreAPI, ipnsKeyWrite string, ipnsKeyReadOnly []string) (readydriver *IpfsDriver, err error) {
 	driver := &IpfsDriver{api: api, ctx: ctx}
 	defer func() {
@@ -365,10 +440,10 @@ func (s *refreshableReadonlyRoot) getNodeFromCid(c cid.Cid) (*merkledag.ProtoNod
 
 }
 
-func (s *IpfsDriver) newRoot(ctx context.Context, c cid.Cid) error {
-	name := s.api.Name()
+func saveNewRoot(ctx context.Context, api coreapi.CoreAPI, writeIpnsKey string, c cid.Cid) error {
+	name := api.Name()
 	path := ipfspath.IpfsPath(c)
-	key := options.Name.Key(s.writeIpnsKey)
+	key := options.Name.Key(writeIpnsKey)
 	timeOpt := options.Name.ValidTime(time.Hour * 24 * 365)
 	_, err := name.Publish(ctx, path, key, timeOpt)
 	l := logger(ctx)
@@ -378,6 +453,10 @@ func (s *IpfsDriver) newRoot(ctx context.Context, c cid.Cid) error {
 	}
 	dcontext.GetLoggerWithField(ctx, "ipns-value", path.Cid().String()).Debug("published ipns entry")
 	return nil
+}
+
+func (s *IpfsDriver) newRoot(ctx context.Context, c cid.Cid) error {
+	return saveNewRoot(ctx, s.api, s.writeIpnsKey, c)
 }
 
 // Name returns the human-readable "name" of the driver, useful in error

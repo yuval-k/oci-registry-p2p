@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
@@ -18,7 +19,7 @@ import (
 
 	"github.com/distribution/distribution/v3/configuration"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/yuval-k/oci-registry-p2p/test/e2e"
 )
@@ -39,7 +40,6 @@ var _ = Describe("E2e", func() {
 		api              coreiface.CoreAPI
 		driverName       string
 		config           *configuration.Configuration
-		wait             chan struct{}
 		reg              *TestRegistry
 		ipnsKey          string
 		ipnsReadOnlyKeys []string
@@ -48,6 +48,7 @@ var _ = Describe("E2e", func() {
 		tdf *TestDriverFactory
 	)
 	BeforeEach(func() {
+		logrus.SetOutput(GinkgoWriter)
 		ctx, cancel = context.WithCancel(context.Background())
 		var err error
 
@@ -66,11 +67,12 @@ var _ = Describe("E2e", func() {
 		Expect(err).NotTo(HaveOccurred())
 		ipnsKey = key.ID().Pretty()
 
-		logrus.SetOutput(GinkgoWriter)
+		api.Unixfs().Add()
+		// initialize the registry
+		// ipfsdriver.InitKey(ctx, api, ipnsKey)
 	})
 
 	runRegistry := func() {
-		wait = make(chan struct{})
 		var err error
 
 		i++
@@ -103,10 +105,10 @@ var _ = Describe("E2e", func() {
 
 		reg, err = NewRegistry(ctx, config)
 		Expect(err).NotTo(HaveOccurred())
+
 		go func() {
 			defer GinkgoRecover()
 			reg.ListenAndServe()
-			close(wait)
 		}()
 	}
 	stopRegistry := func() {
@@ -114,12 +116,23 @@ var _ = Describe("E2e", func() {
 			return
 		}
 
-		reg.Shutdown()
-
+		err := reg.Shutdown()
+		Expect(err).NotTo(HaveOccurred())
 		cancel()
 		ctx, cancel = context.WithCancel(context.Background())
-		<-wait
+		fmt.Fprintln(GinkgoWriter, "waiting for registry to shutdown...")
+
+		select {
+		case <-reg.Done:
+		case <-time.After(time.Second * 10):
+			buf := make([]byte, 1<<20)
+			stacklen := runtime.Stack(buf, true)
+			fmt.Fprintf(GinkgoWriter, "registry did not shutdown in time goroutine dump...\n%s\n*** end\n", buf[:stacklen])
+			Fail("registry did not shutdown in time")
+		}
+
 		time.Sleep(time.Second)
+		fmt.Fprintln(GinkgoWriter, "registry shutdown")
 	}
 
 	JustBeforeEach(runRegistry)
@@ -153,6 +166,7 @@ var _ = Describe("E2e", func() {
 		// Skipping this test, as publishing to the key defined by "self" seems to fail. I think this is a mock/test bug.
 		BeforeEach(func() {
 			ipnsKey = "self"
+			//	ipfsdriver.InitKey(ctx, api, ipnsKey)
 		})
 
 		It("should push and pull image", func() {
@@ -163,7 +177,7 @@ var _ = Describe("E2e", func() {
 		})
 	})
 
-	Context("publish survies restart", func() {
+	Context("publish survives restart", func() {
 		It("should push and pull image", func() {
 			err := run(ContainerRuntime, "push", "localhost:5000/alpine")
 			Expect(err).NotTo(HaveOccurred())

@@ -9,7 +9,6 @@ require (
 	github.com/ipfs/go-datastore v0.5.1
 	github.com/ipfs/go-filestore v1.2.0
 	github.com/ipfs/go-ipfs v0.12.3-0.20220415183200-d59730f51eb5
-	github.com/ipfs/go-ipfs-config v0.18.0
 	github.com/ipfs/go-ipfs-files v0.0.9
 	github.com/ipfs/go-ipfs-http-client v0.1.0-update-libp2p
 	github.com/ipfs/go-ipfs-keystore v0.0.2
@@ -21,8 +20,8 @@ require (
 	github.com/libp2p/go-libp2p v0.18.1
 	github.com/libp2p/go-libp2p-core v0.15.0
 	github.com/multiformats/go-multiaddr v0.5.0
-	github.com/onsi/ginkgo v1.16.5
-	github.com/onsi/gomega v1.16.0
+	github.com/onsi/ginkgo/v2 v2.1.4
+	github.com/onsi/gomega v1.19.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.2
 	github.com/sirupsen/logrus v1.8.1
@@ -108,6 +107,7 @@ require (
 	github.com/ipfs/go-ipfs-blockstore v1.2.0 // indirect
 	github.com/ipfs/go-ipfs-chunker v0.0.5 // indirect
 	github.com/ipfs/go-ipfs-cmds v0.8.0 // indirect
+	github.com/ipfs/go-ipfs-config v0.18.0 // indirect
 	github.com/ipfs/go-ipfs-delay v0.0.1 // indirect
 	github.com/ipfs/go-ipfs-ds-help v1.1.0 // indirect
 	github.com/ipfs/go-ipfs-exchange-interface v0.1.0 // indirect
@@ -203,6 +203,7 @@ require (
 	github.com/multiformats/go-multistream v0.2.2 // indirect
 	github.com/multiformats/go-varint v0.0.6 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
+	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/opencontainers/runtime-spec v1.0.2 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect

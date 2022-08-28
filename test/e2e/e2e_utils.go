@@ -17,7 +17,7 @@ import (
 
 	dcontext "github.com/distribution/distribution/v3/context"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 
 	"github.com/ipfs/go-datastore"
 	syncds "github.com/ipfs/go-datastore/sync"
@@ -285,6 +285,8 @@ type TestRegistry struct {
 	config *configuration.Configuration
 	app    *handlers.App
 	server *http.Server
+
+	Done chan struct{}
 }
 
 // NewRegistry creates a new registry from a context and configuration struct.
@@ -311,15 +313,19 @@ func NewRegistry(ctx context.Context, config *configuration.Configuration) (*Tes
 		app:    app,
 		config: config,
 		server: server,
+		Done:   make(chan struct{}),
 	}, nil
 }
 
 func (registry *TestRegistry) Shutdown() error {
-	return registry.server.Shutdown(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return registry.server.Shutdown(ctx)
 }
 
 // ListenAndServe runs the registry's HTTP server.
 func (registry *TestRegistry) ListenAndServe() error {
+	defer close(registry.Done)
 	config := registry.config
 
 	ln, err := listener.NewListener(config.HTTP.Net, config.HTTP.Addr)

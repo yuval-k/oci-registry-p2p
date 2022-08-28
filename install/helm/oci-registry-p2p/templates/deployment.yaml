@@ -26,6 +26,8 @@ spec:
         {{- toYaml . | nindent 8 }}
     {{- end }}
       automountServiceAccountToken: false
+      enableServiceLinks: false
+      restartPolicy: Always
       serviceAccountName: {{ include "oci-registry-p2p.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
