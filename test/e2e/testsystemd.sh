@@ -22,7 +22,9 @@ echo "Pre-exec Logs:"
 podman logs $CID
 podman inspect $CID
 
-podman exec $CID /bin/sh -c "systemctl daemon-reload && systemctl enable oci-registry-p2p && systemctl start oci-registry-p2p"
+podman exec $CID /bin/sh -c "systemctl daemon-reload && systemctl enable oci-registry-p2p"
+# start, but don't error if failing to start, as we just test systemd
+podman exec $CID /bin/sh -c "systemctl start oci-registry-p2p || :"
 
 # logs:
 echo "Logs:"
