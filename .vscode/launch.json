@@ -29,7 +29,8 @@
             "mode": "auto",
             "program": "${workspaceFolder}",
             "env": {},
-            "args": ["serve", "scripts/example-config-middleware.yaml"],
+            "args": ["serve", "${workspaceFolder}/scripts/example-config-middleware.yaml"],
+            "cwd": "${workspaceFolder}/test/e2e",
         }
     ]
 }
