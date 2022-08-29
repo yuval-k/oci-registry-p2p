@@ -1,7 +1,6 @@
 package ipfs
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,8 +9,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/distribution/distribution/v3"
+	dcontext "github.com/distribution/distribution/v3/context"
+	"github.com/distribution/distribution/v3/manifest"
+	"github.com/distribution/distribution/v3/manifest/manifestlist"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
 	"github.com/distribution/distribution/v3/reference"
 	middleware "github.com/distribution/distribution/v3/registry/middleware/repository"
@@ -23,6 +26,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/opencontainers/go-digest"
 	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 var (
@@ -267,11 +271,7 @@ func (b *blobStore) ServeBlob(ctx context.Context, w http.ResponseWriter, r *htt
 	w.Header().Set("Content-Type", blobContentType)
 	w.Header().Set("Etag", dgst.String())
 
-	if r.Method == http.MethodHead {
-		return nil
-	}
-
-	io.CopyN(w, file, size)
+	http.ServeContent(w, r, "", time.Time{}, file)
 	return nil
 }
 
@@ -318,20 +318,36 @@ func (m *manifestService) Get(ctx context.Context, dgst digest.Digest, options .
 		return nil, err
 	}
 
-	manifest := &imgspecv1.Manifest{}
-	if err := json.NewDecoder(bytes.NewBuffer(content)).Decode(manifest); err != nil {
+	var versioned manifest.Versioned
+	if err = json.Unmarshal(content, &versioned); err != nil {
 		return nil, err
 	}
-	if manifest.SchemaVersion != 2 {
-		return nil, fmt.Errorf("unexpected schema version")
+
+	switch versioned.SchemaVersion {
+	case 2:
+		// This can be an image manifest or a manifest list
+		switch versioned.MediaType {
+
+		case "":
+			fallthrough
+		case v1.MediaTypeImageManifest:
+			dm := &ocischema.DeserializedManifest{}
+			if err := dm.UnmarshalJSON(content); err != nil {
+				return nil, err
+			}
+			return dm, nil
+		case v1.MediaTypeImageIndex:
+			list := &manifestlist.DeserializedManifestList{}
+			if err := list.UnmarshalJSON(content); err != nil {
+				return nil, err
+			}
+			return list, nil
+		default:
+			return nil, distribution.ErrManifestVerification{fmt.Errorf("unrecognized manifest content type %s", versioned.MediaType)}
+		}
 	}
 
-	dm := &ocischema.DeserializedManifest{}
-	if err := dm.UnmarshalJSON(content); err != nil {
-		return nil, err
-	}
-	return dm, nil
-
+	return nil, fmt.Errorf("unrecognized manifest schema version %d", versioned.SchemaVersion)
 }
 
 // Put creates or updates the given manifest returning the manifest digest
@@ -357,23 +373,25 @@ func (t *tagService) Get(ctx context.Context, tag string) (distribution.Descript
 	}
 
 	for _, manifest := range index.Manifests {
-		if manifest.MediaType != imgspecv1.MediaTypeImageManifest {
-			continue
-		}
 		if manifest.Annotations != nil {
 			// when podman exports the manifest, it only writes the tag in the AnnotationRefName.
 			// in theory this should contain the full reference. when i see another tool
 			// that does this, i will update this code to use case.
 			refName := manifest.Annotations[imgspecv1.AnnotationRefName]
 			if tag == refName {
-				ret.Annotations = manifest.Annotations
-				ret.Digest = manifest.Digest
-				ret.MediaType = manifest.MediaType
-				ret.Size = manifest.Size
-				ret.Platform = manifest.Platform
-				ret.URLs = manifest.URLs
+				if manifest.MediaType == imgspecv1.MediaTypeImageManifest || manifest.MediaType == imgspecv1.MediaTypeImageIndex {
 
-				return ret, nil
+					ret.Annotations = manifest.Annotations
+					ret.Digest = manifest.Digest
+					ret.MediaType = manifest.MediaType
+					ret.Size = manifest.Size
+					ret.Platform = manifest.Platform
+					ret.URLs = manifest.URLs
+
+					return ret, nil
+				} else {
+					dcontext.GetLogger(ctx).Errorf("unexpected media type: %s", manifest.MediaType)
+				}
 			}
 		}
 	}
@@ -397,9 +415,16 @@ func (t *tagService) All(ctx context.Context) ([]string, error) {
 }
 
 func (t *tagService) getIndex(ctx context.Context) (*imgspecv1.Index, error) {
-	r := t.parent
-	path := ipfspath.Join(r.location, "index.json")
+	path := ipfspath.Join(t.parent.location, "index.json")
+	return t.getIndexWithPath(ctx, path)
+}
+func (t *tagService) getIndexFromBlob(ctx context.Context, dgst digest.Digest) (*imgspecv1.Index, error) {
+	path := t.parent.digestPath(dgst)
+	return t.getIndexWithPath(ctx, path)
+}
 
+func (t *tagService) getIndexWithPath(ctx context.Context, path ipfspath.Path) (*imgspecv1.Index, error) {
+	r := t.parent
 	node, err := r.unixfs.Get(ctx, path)
 	if err != nil {
 		return nil, err

@@ -67,7 +67,7 @@ var _ = Describe("E2e", func() {
 		Expect(err).NotTo(HaveOccurred())
 		ipnsKey = key.ID().Pretty()
 
-		api.Unixfs().Add()
+		//api.Unixfs().Add()
 		// initialize the registry
 		// ipfsdriver.InitKey(ctx, api, ipnsKey)
 	})
